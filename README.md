@@ -277,14 +277,14 @@ pip install maturin pytest pytest-cov onnxruntime numpy
 ```bash
 # Development build — compiles the Rust crates and installs the .so into the
 # active Python environment as an editable package (fastest iteration cycle)
-maturin develop
+maturin build
 
 # Verify the extension loaded correctly
 llmforge profile
 ```
 
 You should see a JSON hardware profile printed to stdout. If you see an
-`ImportError`, run `cargo clean -p llmforge-bindings && maturin develop` to
+`ImportError`, run `cargo clean -p llmforge-bindings && maturin build` to
 force a full recompile.
 
 ---
@@ -338,7 +338,7 @@ llmforge optimize --help
 
 | Symptom | Fix |
 |---|---|
-| `ImportError: dynamic module does not define module export function` | Stale build cache. Run `cargo clean -p llmforge-bindings && maturin develop`. |
+| `ImportError: dynamic module does not define module export function` | Stale build cache. Run `cargo clean -p llmforge-bindings && maturin build`. |
 | `error[E0463]: can't find crate for …` | Run `rustup update stable` to ensure your toolchain matches the edition in `Cargo.toml`. |
 | `maturin: command not found` | Run `pip install maturin` inside your active virtual environment. |
 | Clippy `error: manual implementation of split_once` | Run `cargo fmt --all` then `cargo clippy --fix`. |
