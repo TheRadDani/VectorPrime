@@ -134,7 +134,10 @@ pub struct OptimizationResult {
 #[derive(Debug, Error)]
 pub enum RuntimeError {
     #[error("required binary '{binary}' was not found in PATH — {install_hint}")]
-    NotInstalled { binary: String, install_hint: String },
+    NotInstalled {
+        binary: String,
+        install_hint: String,
+    },
 
     #[error("model initialization failed: {reason}")]
     InitializationFailed { reason: String },
@@ -363,7 +366,10 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("llama-cli"), "unexpected message: {msg}");
         assert!(msg.contains("not found"), "unexpected message: {msg}");
-        assert!(msg.contains("see https://example.com"), "unexpected message: {msg}");
+        assert!(
+            msg.contains("see https://example.com"),
+            "unexpected message: {msg}"
+        );
     }
 
     #[test]
