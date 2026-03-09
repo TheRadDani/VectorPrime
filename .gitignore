@@ -53,4 +53,4 @@ Thumbs.db
 
 target/debug/*
 .coverage
-target/*
+target/
