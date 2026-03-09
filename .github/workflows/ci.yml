@@ -89,6 +89,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install maturin pytest pytest-cov
+          pip install numpy
 
       - name: Build and install llmforge in dev mode
         run: maturin build
