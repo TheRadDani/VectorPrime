@@ -91,7 +91,7 @@ jobs:
           pip install maturin pytest pytest-cov
 
       - name: Build and install llmforge in dev mode
-        run: maturin develop
+        run: maturin build
 
       - name: Run Python unit tests (no fixtures required)
         run: |
