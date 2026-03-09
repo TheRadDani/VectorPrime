@@ -49,10 +49,7 @@ pub fn export_ollama(
     // 6. Build manifest.
     let manifest = ExportManifest {
         ollama_commands: vec![
-            format!(
-                "ollama create mymodel -f {}",
-                modelfile_path.display()
-            ),
+            format!("ollama create mymodel -f {}", modelfile_path.display()),
             "ollama run mymodel".to_string(),
         ],
         output_dir: output_dir.to_path_buf(),
@@ -226,7 +223,8 @@ mod tests {
 
         let json_path = out.join("metadata.json");
         let raw = std::fs::read_to_string(&json_path).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&raw).expect("metadata.json is invalid JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&raw).expect("metadata.json is invalid JSON");
         assert!(parsed["config"]["threads"].is_number());
     }
 

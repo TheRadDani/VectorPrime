@@ -38,7 +38,10 @@ impl AdapterRegistry {
     }
 
     /// Look up a mutable reference to the adapter for `kind`.
-    pub fn get_mut<'a>(&'a mut self, kind: &RuntimeKind) -> Option<&'a mut (dyn RuntimeAdapter + 'static)> {
+    pub fn get_mut<'a>(
+        &'a mut self,
+        kind: &RuntimeKind,
+    ) -> Option<&'a mut (dyn RuntimeAdapter + 'static)> {
         self.adapters.get_mut(kind).map(|b| b.as_mut())
     }
 }

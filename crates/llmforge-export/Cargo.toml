@@ -7,3 +7,7 @@ edition = "2021"
 llmforge-core = { path = "../llmforge-core" }
 anyhow = "1"
 serde_json = "1"
+which = "4"
+
+[dev-dependencies]
+tempfile = "3"

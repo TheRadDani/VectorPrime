@@ -8,9 +8,9 @@ pub fn bytes_per_param(q: &QuantizationStrategy) -> f64 {
     match q {
         QuantizationStrategy::F16 => 2.0,
         QuantizationStrategy::Q8_0 | QuantizationStrategy::Int8 => 1.0,
-        QuantizationStrategy::Q4_K_M
-        | QuantizationStrategy::Q4_0
-        | QuantizationStrategy::Int4 => 0.5,
+        QuantizationStrategy::Q4_K_M | QuantizationStrategy::Q4_0 | QuantizationStrategy::Int4 => {
+            0.5
+        }
     }
 }
 
@@ -74,10 +74,7 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
         }
     };
 
-    let vram_budget_mb = hw
-        .gpu
-        .as_ref()
-        .map(|g| g.vram_mb as f64 * 0.9);
+    let vram_budget_mb = hw.gpu.as_ref().map(|g| g.vram_mb as f64 * 0.9);
 
     let mut candidates = Vec::new();
     for (runtime, quant) in combos {
@@ -111,7 +108,9 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
 #[cfg(test)]
 mod tests {
     use super::*;
-    use llmforge_core::{CpuInfo, GpuInfo, HardwareProfile, ModelFormat, ModelInfo, RamInfo, SimdLevel};
+    use llmforge_core::{
+        CpuInfo, GpuInfo, HardwareProfile, ModelFormat, ModelInfo, RamInfo, SimdLevel,
+    };
     use std::path::PathBuf;
 
     fn cpu_only_hw(cores: u32) -> HardwareProfile {
@@ -171,7 +170,11 @@ mod tests {
         let candidates = generate_candidates(&hw, &model);
         assert!(!candidates.is_empty());
         for c in &candidates {
-            assert_eq!(c.runtime, RuntimeKind::LlamaCpp, "non-llama runtime in GGUF candidates");
+            assert_eq!(
+                c.runtime,
+                RuntimeKind::LlamaCpp,
+                "non-llama runtime in GGUF candidates"
+            );
         }
     }
 
@@ -182,7 +185,11 @@ mod tests {
         let candidates = generate_candidates(&hw, &model);
         assert!(!candidates.is_empty());
         for c in &candidates {
-            assert_ne!(c.runtime, RuntimeKind::TensorRT, "TensorRT should not appear without GPU");
+            assert_ne!(
+                c.runtime,
+                RuntimeKind::TensorRT,
+                "TensorRT should not appear without GPU"
+            );
         }
     }
 
@@ -192,7 +199,9 @@ mod tests {
         let model = onnx_model();
         let candidates = generate_candidates(&hw, &model);
         assert!(
-            candidates.iter().any(|c| c.runtime == RuntimeKind::TensorRT),
+            candidates
+                .iter()
+                .any(|c| c.runtime == RuntimeKind::TensorRT),
             "expected TensorRT candidates with capable GPU"
         );
     }
@@ -203,7 +212,11 @@ mod tests {
         let model = onnx_model();
         let candidates = generate_candidates(&hw, &model);
         for c in &candidates {
-            assert_ne!(c.runtime, RuntimeKind::TensorRT, "TensorRT should be excluded for cap < 7");
+            assert_ne!(
+                c.runtime,
+                RuntimeKind::TensorRT,
+                "TensorRT should be excluded for cap < 7"
+            );
         }
     }
 
@@ -211,7 +224,10 @@ mod tests {
     fn test_bytes_per_param_all_variants() {
         use QuantizationStrategy::*;
         for q in [F16, Q8_0, Q4_K_M, Q4_0, Int8, Int4] {
-            assert!(bytes_per_param(&q) > 0.0, "bytes_per_param({q:?}) must be > 0");
+            assert!(
+                bytes_per_param(&q) > 0.0,
+                "bytes_per_param({q:?}) must be > 0"
+            );
         }
     }
 
@@ -231,6 +247,9 @@ mod tests {
         let model = gguf_model();
         let candidates = generate_candidates(&hw, &model);
         let has_nonzero = candidates.iter().any(|c| c.gpu_layers > 0);
-        assert!(has_nonzero, "expected non-zero gpu_layers when GPU is present");
+        assert!(
+            has_nonzero,
+            "expected non-zero gpu_layers when GPU is present"
+        );
     }
 }

@@ -136,12 +136,11 @@ impl RuntimeAdapter for LlamaCppAdapter {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let (tokens_per_sec, latency_ms) =
-            parse_llama_timings(&stdout).ok_or_else(|| {
-                anyhow::anyhow!(RuntimeError::InferenceFailed {
-                    reason: "could not parse timing output from llama-cli".to_string(),
-                })
-            })?;
+        let (tokens_per_sec, latency_ms) = parse_llama_timings(&stdout).ok_or_else(|| {
+            anyhow::anyhow!(RuntimeError::InferenceFailed {
+                reason: "could not parse timing output from llama-cli".to_string(),
+            })
+        })?;
 
         Ok(BenchmarkResult {
             tokens_per_sec,

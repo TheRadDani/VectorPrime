@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use anyhow::Result;
+use llmforge_core::{
+    BenchmarkResult, ModelFormat, ModelInfo, RuntimeAdapter, RuntimeConfig, RuntimeError,
+};
 use serde::Deserialize;
-use llmforge_core::{BenchmarkResult, ModelFormat, ModelInfo, RuntimeAdapter, RuntimeConfig, RuntimeError};
 
 /// Path to the bundled Python runner, relative to the workspace root.
 const RUNNER_REL_PATH: &str = "python/llmforge/onnx_runner.py";
@@ -296,10 +298,7 @@ mod tests {
     #[test]
     fn test_parse_onnx_output_garbled() {
         let err = parse_onnx_output("not json at all").unwrap_err();
-        assert!(
-            err.to_string().contains("unparseable"),
-            "unexpected: {err}"
-        );
+        assert!(err.to_string().contains("unparseable"), "unexpected: {err}");
     }
 
     // ── load_model format check ───────────────────────────────────────────────

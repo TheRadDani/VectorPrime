@@ -42,9 +42,7 @@ impl RuntimeAdapter for TensorRtAdapter {
         if let Some((major, _)) = cap {
             if major < 7 {
                 return Err(anyhow::anyhow!(RuntimeError::UnsupportedConfiguration {
-                    detail: format!(
-                        "TensorRT requires compute capability ≥ 7.0, found {major}.x"
-                    ),
+                    detail: format!("TensorRT requires compute capability ≥ 7.0, found {major}.x"),
                 }));
             }
         }
@@ -59,10 +57,7 @@ impl RuntimeAdapter for TensorRtAdapter {
     fn load_model(&mut self, model: &ModelInfo) -> Result<()> {
         if model.format != ModelFormat::ONNX {
             return Err(anyhow::anyhow!(RuntimeError::UnsupportedConfiguration {
-                detail: format!(
-                    "TensorRT only supports ONNX models, got {:?}",
-                    model.format
-                ),
+                detail: format!("TensorRT only supports ONNX models, got {:?}", model.format),
             }));
         }
         if !model.path.exists() {
@@ -177,7 +172,12 @@ pub fn parse_latency(output: &str) -> Option<f64> {
         .find(|l| l.contains("Latency:") && l.contains("mean"))?;
     // Walk past "mean = " and grab the number before " ms"
     let after_mean = line.splitn(2, "mean =").nth(1)?;
-    after_mean.split_whitespace().next()?.trim_end_matches(',').parse().ok()
+    after_mean
+        .split_whitespace()
+        .next()?
+        .trim_end_matches(',')
+        .parse()
+        .ok()
 }
 
 /// Extract peak GPU memory (MiB → MB) from trtexec stdout.
@@ -250,7 +250,8 @@ mod tests {
 
     #[test]
     fn test_parse_latency_mean() {
-        let output = "[I] Latency: min = 23.10 ms, max = 25.40 ms, mean = 23.50 ms, median = 23.48 ms\n";
+        let output =
+            "[I] Latency: min = 23.10 ms, max = 25.40 ms, mean = 23.50 ms, median = 23.48 ms\n";
         let lat = parse_latency(output).unwrap();
         assert!((lat - 23.50).abs() < 0.01, "latency={lat}");
 

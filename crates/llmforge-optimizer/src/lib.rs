@@ -23,10 +23,7 @@ use llmforge_core::{HardwareProfile, ModelInfo, OptimizationResult};
 /// 3. Select the winner via [`select_best`].
 ///
 /// Returns `Err` if no valid configuration was found.
-pub async fn run_optimization(
-    model: ModelInfo,
-    hw: HardwareProfile,
-) -> Result<OptimizationResult> {
+pub async fn run_optimization(model: ModelInfo, hw: HardwareProfile) -> Result<OptimizationResult> {
     let candidates = generate_candidates(&hw, &model);
 
     if candidates.is_empty() {

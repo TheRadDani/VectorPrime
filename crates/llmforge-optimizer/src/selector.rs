@@ -127,8 +127,14 @@ mod tests {
     #[test]
     fn test_select_best_all_errors_returns_none() {
         let results = vec![
-            (config(RuntimeKind::LlamaCpp), Err(anyhow::anyhow!("failed"))),
-            (config(RuntimeKind::TensorRT), Err(anyhow::anyhow!("also failed"))),
+            (
+                config(RuntimeKind::LlamaCpp),
+                Err(anyhow::anyhow!("failed")),
+            ),
+            (
+                config(RuntimeKind::TensorRT),
+                Err(anyhow::anyhow!("also failed")),
+            ),
         ];
         let result = select_best(results, &hw(16384));
         assert!(result.is_none());

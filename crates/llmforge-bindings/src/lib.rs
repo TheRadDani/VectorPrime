@@ -53,9 +53,8 @@ impl PyHardwareProfile {
 
     /// Serialize the profile to a JSON string.
     fn to_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.inner).map_err(|e| {
-            PyRuntimeError::new_err(format!("serialization failed: {e}"))
-        })
+        serde_json::to_string(&self.inner)
+            .map_err(|e| PyRuntimeError::new_err(format!("serialization failed: {e}")))
     }
 
     fn __repr__(&self) -> String {
@@ -114,9 +113,8 @@ pub struct PyOptimizationResult {
 impl PyOptimizationResult {
     /// Serialize the result to a JSON string.
     fn to_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.inner).map_err(|e| {
-            PyRuntimeError::new_err(format!("serialization failed: {e}"))
-        })
+        serde_json::to_string(&self.inner)
+            .map_err(|e| PyRuntimeError::new_err(format!("serialization failed: {e}")))
     }
 
     fn __repr__(&self) -> String {
@@ -266,9 +264,8 @@ fn optimize(model_path: &str, format: &str) -> PyResult<PyOptimizationResult> {
 fn export_ollama(result: &PyOptimizationResult, output_dir: &str) -> PyResult<String> {
     let out = Path::new(output_dir);
 
-    let manifest =
-        llmforge_export::export_ollama(&result.inner, &result.model_path, out)
-            .map_err(to_py_err)?;
+    let manifest = llmforge_export::export_ollama(&result.inner, &result.model_path, out)
+        .map_err(to_py_err)?;
 
     // ExportManifest does not implement Serialize, so we build a JSON value
     // from its fields manually.
@@ -279,9 +276,8 @@ fn export_ollama(result: &PyOptimizationResult, output_dir: &str) -> PyResult<St
         "ollama_commands": manifest.ollama_commands,
     });
 
-    serde_json::to_string(&json).map_err(|e| {
-        PyRuntimeError::new_err(format!("failed to serialize export manifest: {e}"))
-    })
+    serde_json::to_string(&json)
+        .map_err(|e| PyRuntimeError::new_err(format!("failed to serialize export manifest: {e}")))
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
