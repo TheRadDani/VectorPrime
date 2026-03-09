@@ -68,9 +68,9 @@ info "cargo tarpaulin --workspace --fail-under ${THRESHOLD}"
 set +e
 cargo tarpaulin \
   --workspace \
+  --exclude llmforge-bindings \
   --out Xml Html \
   --output-dir "${COV_DIR}/rust" \
-  --exclude-files "crates/llmforge-bindings/*" \
   --timeout 120 \
   --fail-under "${THRESHOLD}" \
   2>&1 | tee "${RUST_COV_LOG}"
