@@ -64,7 +64,7 @@ class TestHardwareProfile:
         hw = self.llmforge.profile_hardware()
         data = json.loads(hw.to_json())
         assert "cpu" in data
-        assert data["cpu"]["cores"] >= 1
+        assert data["cpu"]["core_count"] >= 1
 
     def test_repr_contains_cpu(self):
         hw = self.llmforge.profile_hardware()
