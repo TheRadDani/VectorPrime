@@ -1,1 +1,126 @@
-// placeholder
+//! Runtime adapter registry and dispatch for LLMForge.
+//!
+//! This crate owns the [`AdapterRegistry`] (which maps [`RuntimeKind`] to a
+//! boxed [`RuntimeAdapter`]) and the [`dispatch`] function that drives the
+//! full benchmark cycle through a chosen adapter.
+
+pub mod dispatch;
+pub mod llamacpp;
+pub mod onnx;
+pub mod tensorrt;
+
+pub use dispatch::dispatch;
+pub use llamacpp::LlamaCppAdapter;
+pub use onnx::OnnxAdapter;
+pub use tensorrt::TensorRtAdapter;
+
+use std::collections::HashMap;
+
+use llmforge_core::{RuntimeAdapter, RuntimeKind};
+
+/// Registry of all available runtime adapters.
+///
+/// On construction, all three built-in adapters are registered. Stubs return
+/// [`llmforge_core::RuntimeError::NotInstalled`] from `initialize` until their
+/// respective implementation stages (3B / 3C / 3D) are completed.
+pub struct AdapterRegistry {
+    adapters: HashMap<RuntimeKind, Box<dyn RuntimeAdapter>>,
+}
+
+impl AdapterRegistry {
+    /// Create a registry pre-populated with all three adapter stubs.
+    pub fn new() -> Self {
+        let mut adapters: HashMap<RuntimeKind, Box<dyn RuntimeAdapter>> = HashMap::new();
+        adapters.insert(RuntimeKind::LlamaCpp, Box::new(LlamaCppAdapter::new()));
+        adapters.insert(RuntimeKind::OnnxRuntime, Box::new(OnnxAdapter::new()));
+        adapters.insert(RuntimeKind::TensorRT, Box::new(TensorRtAdapter::new()));
+        Self { adapters }
+    }
+
+    /// Look up a mutable reference to the adapter for `kind`.
+    pub fn get_mut<'a>(&'a mut self, kind: &RuntimeKind) -> Option<&'a mut (dyn RuntimeAdapter + 'static)> {
+        self.adapters.get_mut(kind).map(|b| b.as_mut())
+    }
+}
+
+impl Default for AdapterRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use llmforge_core::{ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind};
+    use std::path::PathBuf;
+
+    fn sample_config(runtime: RuntimeKind) -> RuntimeConfig {
+        RuntimeConfig {
+            runtime,
+            quantization: QuantizationStrategy::Q4_K_M,
+            threads: 4,
+            batch_size: 128,
+            gpu_layers: 0,
+        }
+    }
+
+    fn sample_model() -> ModelInfo {
+        ModelInfo {
+            path: PathBuf::from("/tmp/test.gguf"),
+            format: ModelFormat::GGUF,
+            param_count: None,
+        }
+    }
+
+    #[test]
+    fn test_registry_has_all_kinds() {
+        let mut registry = AdapterRegistry::new();
+        assert!(registry.get_mut(&RuntimeKind::LlamaCpp).is_some());
+        assert!(registry.get_mut(&RuntimeKind::OnnxRuntime).is_some());
+        assert!(registry.get_mut(&RuntimeKind::TensorRT).is_some());
+    }
+
+    #[test]
+    fn test_dispatch_not_installed_llamacpp() {
+        let mut registry = AdapterRegistry::new();
+        let config = sample_config(RuntimeKind::LlamaCpp);
+        let model = sample_model();
+        let err = dispatch(&mut registry, &config, &model, "hello").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not found") || msg.contains("llama-cli"),
+            "unexpected error message: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_dispatch_not_installed_onnx() {
+        let mut registry = AdapterRegistry::new();
+        let config = sample_config(RuntimeKind::OnnxRuntime);
+        let model = sample_model();
+        let err = dispatch(&mut registry, &config, &model, "hello").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not found") || msg.contains("python3"),
+            "unexpected error message: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_dispatch_not_installed_tensorrt() {
+        let mut registry = AdapterRegistry::new();
+        let config = sample_config(RuntimeKind::TensorRT);
+        let model = sample_model();
+        let err = dispatch(&mut registry, &config, &model, "hello").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not found") || msg.contains("trtexec"),
+            "unexpected error message: {msg}"
+        );
+    }
+}

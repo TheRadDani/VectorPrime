@@ -32,7 +32,7 @@ pub enum QuantizationStrategy {
     Int4,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RuntimeKind {
     LlamaCpp,
     OnnxRuntime,
