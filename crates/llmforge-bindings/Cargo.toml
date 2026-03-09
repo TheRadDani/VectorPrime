@@ -1,0 +1,15 @@
+[package]
+name = "llmforge-bindings"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+llmforge-core = { path = "../llmforge-core" }
+llmforge-hardware = { path = "../llmforge-hardware" }
+llmforge-runtime = { path = "../llmforge-runtime" }
+llmforge-optimizer = { path = "../llmforge-optimizer" }
+llmforge-export = { path = "../llmforge-export" }
+pyo3 = { version = "0.21", features = ["extension-module"] }

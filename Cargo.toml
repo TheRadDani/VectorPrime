@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/llmforge-core",
+  "crates/llmforge-hardware",
+  "crates/llmforge-runtime",
+  "crates/llmforge-optimizer",
+  "crates/llmforge-export",
+  "crates/llmforge-bindings",
+]
