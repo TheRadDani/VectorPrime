@@ -43,7 +43,7 @@ def cmd_optimize(args: argparse.Namespace) -> None:
 
     try:
         import llmforge._llmforge as _llmforge  # type: ignore[import]
-        result = _llmforge.optimize(model_path, fmt)
+        result = _llmforge.optimize(model_path, fmt, args.gpu)
     except RuntimeError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
@@ -144,6 +144,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="MB",
         help="Warn if peak memory exceeds this limit (MB).",
+    )
+    opt.add_argument(
+        "--gpu",
+        default=None,
+        metavar="MODEL",
+        help=(
+            "Target GPU model (e.g. 4090, 3090, a100, h100) or 'cpu' for CPU-only. "
+            "Overrides auto-detected GPU hardware. "
+            "Accepts case-insensitive names with optional spaces or dashes "
+            "(e.g. 'RTX 4090', 'rtx-4090', '4090' all work)."
+        ),
     )
 
     # export-ollama
