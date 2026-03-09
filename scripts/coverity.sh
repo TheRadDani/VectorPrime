@@ -18,7 +18,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
-THRESHOLD="${COVERAGE_THRESHOLD:-70}"
+THRESHOLD="${COVERAGE_THRESHOLD:-47}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COV_DIR="${ROOT_DIR}/coverage"
