@@ -1,4 +1,14 @@
+// crates/llmforge-hardware/src/cpu.rs
+//
+// CPU detection: brand string and SIMD capability.
+// On x86/x86_64 hosts the raw-cpuid crate is used for direct CPUID instruction
+// access.  On all other architectures we fall back to /proc/cpuinfo (Linux) or
+// return safe defaults so the crate compiles cross-platform.
+
 use llmforge_core::{CpuInfo, SimdLevel};
+
+// The raw-cpuid import is only available on x86/x86_64.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use raw_cpuid::CpuId;
 
 pub fn detect() -> CpuInfo {
@@ -9,6 +19,11 @@ pub fn detect() -> CpuInfo {
     }
 }
 
+// ── brand string ─────────────────────────────────────────────────────────────
+
+/// On x86/x86_64: query via CPUID leaf 0x80000002-4, fall back to /proc/cpuinfo.
+/// On other architectures: read /proc/cpuinfo directly (Linux), or return "Unknown".
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn detect_brand() -> String {
     let cpuid = CpuId::new();
     if let Some(brand) = cpuid.get_processor_brand_string() {
@@ -20,6 +35,16 @@ fn detect_brand() -> String {
     parse_proc_cpuinfo_brand().unwrap_or_else(|| "Unknown".to_string())
 }
 
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+fn detect_brand() -> String {
+    parse_proc_cpuinfo_brand().unwrap_or_else(|| "Unknown".to_string())
+}
+
+// ── SIMD level ────────────────────────────────────────────────────────────────
+
+/// On x86/x86_64: query AVX/AVX2/AVX512 via CPUID feature flags.
+/// On other architectures: AVX is an x86 concept; return None.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn detect_simd() -> SimdLevel {
     let cpuid = CpuId::new();
 
@@ -39,6 +64,15 @@ fn detect_simd() -> SimdLevel {
     SimdLevel::None
 }
 
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+fn detect_simd() -> SimdLevel {
+    SimdLevel::None
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+/// Read the "model name" field from /proc/cpuinfo (Linux only).
+/// Returns None on non-Linux systems or when the field is absent.
 fn parse_proc_cpuinfo_brand() -> Option<String> {
     let content = std::fs::read_to_string("/proc/cpuinfo").ok()?;
     for line in content.lines() {
