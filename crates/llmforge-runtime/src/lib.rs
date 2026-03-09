@@ -120,8 +120,13 @@ mod tests {
         let model = sample_model();
         let err = dispatch(&mut registry, &config, &model, "hello").unwrap_err();
         let msg = err.to_string();
+        // When trtexec is absent: "not found" / "trtexec".
+        // When trtexec is present but the GGUF fixture is rejected: "ONNX" / "unsupported".
         assert!(
-            msg.contains("not found") || msg.contains("trtexec"),
+            msg.contains("not found")
+                || msg.contains("trtexec")
+                || msg.contains("ONNX")
+                || msg.contains("unsupported"),
             "unexpected error message: {msg}"
         );
     }
