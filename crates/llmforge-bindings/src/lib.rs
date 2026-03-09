@@ -241,7 +241,7 @@ fn optimize(model_path: &str, format: &str, gpu: Option<String>) -> PyResult<PyO
     // `None` here means --gpu was not passed at all — leave hw.gpu unchanged.
     if let Some(ref gpu_str) = gpu {
         let resolved = gpu_lookup::lookup_gpu(Some(gpu_str.as_str()))
-            .map_err(|e| PyRuntimeError::new_err(e))?;
+            .map_err(PyRuntimeError::new_err)?
         // Replace detected GPU unconditionally; resolved may be None (CPU-only).
         hw.gpu = resolved;
     }
