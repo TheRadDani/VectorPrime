@@ -34,6 +34,7 @@ impl RuntimeAdapter for TensorRtAdapter {
         let path = which::which("trtexec").map_err(|_| {
             anyhow::anyhow!(RuntimeError::NotInstalled {
                 binary: "trtexec".to_string(),
+                install_hint: "install NVIDIA TensorRT from https://developer.nvidia.com/tensorrt".to_string(),
             })
         })?;
 

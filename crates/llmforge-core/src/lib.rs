@@ -133,8 +133,8 @@ pub struct OptimizationResult {
 /// Structured errors produced by runtime adapters.
 #[derive(Debug, Error)]
 pub enum RuntimeError {
-    #[error("required binary '{binary}' was not found in PATH")]
-    NotInstalled { binary: String },
+    #[error("required binary '{binary}' was not found in PATH — {install_hint}")]
+    NotInstalled { binary: String, install_hint: String },
 
     #[error("model initialization failed: {reason}")]
     InitializationFailed { reason: String },
@@ -358,11 +358,12 @@ mod tests {
     fn runtime_error_not_installed_message() {
         let err = RuntimeError::NotInstalled {
             binary: "llama-cli".to_string(),
+            install_hint: "see https://example.com".to_string(),
         };
-        assert_eq!(
-            err.to_string(),
-            "required binary 'llama-cli' was not found in PATH"
-        );
+        let msg = err.to_string();
+        assert!(msg.contains("llama-cli"), "unexpected message: {msg}");
+        assert!(msg.contains("not found"), "unexpected message: {msg}");
+        assert!(msg.contains("see https://example.com"), "unexpected message: {msg}");
     }
 
     #[test]

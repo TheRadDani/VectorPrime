@@ -79,6 +79,7 @@ impl RuntimeAdapter for OnnxAdapter {
         let python = which::which("python3").map_err(|_| {
             anyhow::anyhow!(RuntimeError::NotInstalled {
                 binary: "python3".to_string(),
+                install_hint: "install Python 3 and onnxruntime (pip install onnxruntime)".to_string(),
             })
         })?;
 
@@ -86,6 +87,7 @@ impl RuntimeAdapter for OnnxAdapter {
         let runner = Self::find_runner().ok_or_else(|| {
             anyhow::anyhow!(RuntimeError::NotInstalled {
                 binary: "onnx_runner.py".to_string(),
+                install_hint: "install Python 3 and onnxruntime (pip install onnxruntime)".to_string(),
             })
         })?;
 
@@ -103,6 +105,7 @@ impl RuntimeAdapter for OnnxAdapter {
         if !status.success() {
             return Err(anyhow::anyhow!(RuntimeError::NotInstalled {
                 binary: "onnxruntime (python package)".to_string(),
+                install_hint: "install Python 3 and onnxruntime (pip install onnxruntime)".to_string(),
             }));
         }
 

@@ -38,6 +38,7 @@ impl RuntimeAdapter for LlamaCppAdapter {
         let path = which::which("llama-cli").map_err(|_| {
             anyhow::anyhow!(RuntimeError::NotInstalled {
                 binary: "llama-cli".to_string(),
+                install_hint: "install llama.cpp from https://github.com/ggerganov/llama.cpp/releases or via your package manager (e.g. brew install llama.cpp)".to_string(),
             })
         })?;
 
