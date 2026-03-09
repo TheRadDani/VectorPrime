@@ -213,12 +213,15 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 name = "llmforge-bindings"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "llmforge-core",
  "llmforge-export",
  "llmforge-hardware",
  "llmforge-optimizer",
  "llmforge-runtime",
  "pyo3",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -238,6 +241,8 @@ dependencies = [
  "anyhow",
  "llmforge-core",
  "serde_json",
+ "tempfile",
+ "which",
 ]
 
 [[package]]
