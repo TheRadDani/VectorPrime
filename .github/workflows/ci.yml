@@ -213,3 +213,16 @@ jobs:
         with:
           name: python-coverage
           path: coverage/python/
+
+      - name: Upload Python coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage
+          path: coverage/python/
+
+  # ─────────────────────────────────────────────
+  # Job 5: Publish release
+  # After all test passes, publish release to PyPI and GitHub Packages when a new tag is pushed.
+  #
+  #publish:
