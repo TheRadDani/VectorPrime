@@ -22,7 +22,9 @@ use llmforge_core::{HardwareProfile, ModelInfo, OptimizationResult};
 ///    [`benchmark::run_benchmarks`].
 /// 3. Select the winner via [`select_best`].
 ///
-/// Returns `Err` if no valid configuration was found.
+/// Returns `Err` if no valid configuration was found, with a diagnostic
+/// message that includes the unique benchmark failure reasons so the user
+/// knows which runtime binaries are missing or misconfigured.
 pub async fn run_optimization(model: ModelInfo, hw: HardwareProfile) -> Result<OptimizationResult> {
     let candidates = generate_candidates(&hw, &model);
 
@@ -34,6 +36,37 @@ pub async fn run_optimization(model: ModelInfo, hw: HardwareProfile) -> Result<O
 
     let results = benchmark::run_benchmarks(candidates, &model, &hw).await;
 
-    select_best(results, &hw)
-        .ok_or_else(|| anyhow::anyhow!("no valid configuration found after benchmarking"))
+    // Collect unique failure reasons before consuming `results` so we can
+    // produce an actionable error message when nothing survives selection.
+    let failure_reasons: Vec<String> = {
+        let mut seen = std::collections::BTreeSet::new();
+        for (_, outcome) in &results {
+            if let Err(e) = outcome {
+                // Use root-cause message (first line) to deduplicate noisy output.
+                let msg = e
+                    .chain()
+                    .last()
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| e.to_string());
+                seen.insert(msg);
+            }
+        }
+        seen.into_iter().collect()
+    };
+
+    select_best(results, &hw).ok_or_else(|| {
+        if failure_reasons.is_empty() {
+            // All benchmarks succeeded but results were filtered (e.g. OOM).
+            anyhow::anyhow!(
+                "no valid configuration found: all benchmark results exceeded the available \
+                 memory budget. Try freeing RAM or using a smaller model."
+            )
+        } else {
+            let reasons = failure_reasons.join("; ");
+            anyhow::anyhow!(
+                "no compatible runtimes found — install the required binaries and retry.\n\
+                 Failure reasons: {reasons}"
+            )
+        }
+    })
 }

@@ -12,6 +12,9 @@
 //   llmforge_optimizer -> run_optimization()
 //   llmforge_export    -> export_ollama()
 //   llmforge_core      -> shared types (HardwareProfile, OptimizationResult, …)
+//   gpu_lookup         -> lookup_gpu() (resolves --gpu CLI flag to GpuInfo)
+
+mod gpu_lookup;
 
 use std::path::{Path, PathBuf};
 
@@ -202,6 +205,11 @@ fn parse_model_format(format: &str) -> PyResult<ModelFormat> {
 ///     Absolute or relative path to the model file (`.gguf` or `.onnx`).
 /// format : str
 ///     Model format: `"gguf"` or `"onnx"` (case-insensitive).
+/// gpu : str, optional
+///     Target GPU model string (e.g. `"4090"`, `"RTX 3090"`, `"a100"`).
+///     Pass `"cpu"` or omit to force CPU-only mode.  When provided this
+///     value **completely replaces** the auto-detected GPU in the hardware
+///     profile so that the optimizer plans for the specified hardware.
 ///
 /// Returns
 /// -------
@@ -211,9 +219,11 @@ fn parse_model_format(format: &str) -> PyResult<ModelFormat> {
 /// Raises
 /// ------
 /// RuntimeError
-///     If no valid configuration could be benchmarked or the path is invalid.
+///     If no valid configuration could be benchmarked, the path is invalid,
+///     or an unrecognised GPU model string is supplied.
 #[pyfunction]
-fn optimize(model_path: &str, format: &str) -> PyResult<PyOptimizationResult> {
+#[pyo3(signature = (model_path, format, gpu=None))]
+fn optimize(model_path: &str, format: &str, gpu: Option<String>) -> PyResult<PyOptimizationResult> {
     let fmt = parse_model_format(format)?;
     let path = PathBuf::from(model_path);
 
@@ -223,7 +233,18 @@ fn optimize(model_path: &str, format: &str) -> PyResult<PyOptimizationResult> {
         param_count: None,
     };
 
-    let hw = llmforge_hardware::profile();
+    // Auto-detect host hardware, then apply the optional GPU override.
+    let mut hw = llmforge_hardware::profile();
+
+    // When the caller supplies *any* --gpu value (including "cpu" or ""),
+    // resolve it and completely replace the auto-detected GPU field.
+    // `None` here means --gpu was not passed at all — leave hw.gpu unchanged.
+    if let Some(ref gpu_str) = gpu {
+        let resolved = gpu_lookup::lookup_gpu(Some(gpu_str.as_str()))
+            .map_err(|e| PyRuntimeError::new_err(e))?;
+        // Replace detected GPU unconditionally; resolved may be None (CPU-only).
+        hw.gpu = resolved;
+    }
 
     // The optimizer is async; we must block here because PyO3 does not
     // support `async fn` free functions without additional plumbing.
