@@ -18,9 +18,9 @@
   <a href="https://pypi.org/project/llmforge/"><img src="https://img.shields.io/pypi/pyversions/llmforge?style=flat-square" alt="Python versions"></a>
   <a href="https://pypi.org/project/llmforge/"><img src="https://img.shields.io/pypi/dm/llmforge?style=flat-square&color=green" alt="Monthly downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"></a>
-  <a href="https://github.com/YOUR_USERNAME/llm-forge/actions"><img src="https://img.shields.io/github/actions/workflow/status/YOUR_USERNAME/llm-forge/ci.yml?style=flat-square&label=CI" alt="CI status"></a>
-  <a href="https://github.com/YOUR_USERNAME/llm-forge/stargazers"><img src="https://img.shields.io/github/stars/YOUR_USERNAME/llm-forge?style=flat-square" alt="GitHub stars"></a>
-  <a href="https://github.com/YOUR_USERNAME/llm-forge/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square" alt="PRs welcome"></a>
+  <a href="https://github.com/TheRadDani/llm-forge/actions"><img src="https://img.shields.io/github/actions/workflow/status/TheRadDani/llm-forge/ci.yml?style=flat-square&label=CI" alt="CI status"></a>
+  <a href="https://github.com/TheRadDani/llm-forge/stargazers"><img src="https://img.shields.io/github/stars/TheRadDani/llm-forge?style=flat-square" alt="GitHub stars"></a>
+  <a href="https://github.com/TheRadDani/llm-forge/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square" alt="PRs welcome"></a>
 </p>
 
 ---
