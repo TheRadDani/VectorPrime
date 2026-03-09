@@ -159,7 +159,7 @@ pub fn quant_to_flag(q: &QuantizationStrategy) -> &'static str {
 pub fn parse_throughput(output: &str) -> Option<f64> {
     let line = output.lines().find(|l| l.contains("Throughput:"))?;
     // "Throughput: 42.5 qps"
-    let after = line.splitn(2, "Throughput:").nth(1)?;
+    let after = line.split_once("Throughput:")?.1;
     after.split_whitespace().next()?.parse().ok()
 }
 
@@ -171,7 +171,7 @@ pub fn parse_latency(output: &str) -> Option<f64> {
         .lines()
         .find(|l| l.contains("Latency:") && l.contains("mean"))?;
     // Walk past "mean = " and grab the number before " ms"
-    let after_mean = line.splitn(2, "mean =").nth(1)?;
+    let after_mean = line.split_once("mean =")?.1;
     after_mean
         .split_whitespace()
         .next()?
@@ -185,7 +185,7 @@ pub fn parse_latency(output: &str) -> Option<f64> {
 /// Looks for: `GPU Memory: X MiB`
 pub fn parse_memory(output: &str) -> Option<u64> {
     let line = output.lines().find(|l| l.contains("GPU Memory:"))?;
-    let after = line.splitn(2, "GPU Memory:").nth(1)?;
+    let after = line.split_once("GPU Memory:")?.1;
     after.split_whitespace().next()?.parse().ok()
 }
 

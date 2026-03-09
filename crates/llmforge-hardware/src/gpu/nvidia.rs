@@ -52,7 +52,7 @@ pub fn parse_nvidia_csv(line: &str) -> Option<GpuInfo> {
 /// (SM 7.0 / Volta and later).
 #[allow(dead_code)]
 pub fn has_tensor_cores(cap: Option<(u32, u32)>) -> bool {
-    cap.map_or(false, |(major, _)| major >= 7)
+    cap.is_some_and(|(major, _)| major >= 7)
 }
 
 fn parse_compute_cap(s: &str) -> Option<(u32, u32)> {

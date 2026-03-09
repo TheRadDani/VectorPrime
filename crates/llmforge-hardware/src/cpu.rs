@@ -43,7 +43,7 @@ fn parse_proc_cpuinfo_brand() -> Option<String> {
     let content = std::fs::read_to_string("/proc/cpuinfo").ok()?;
     for line in content.lines() {
         if line.starts_with("model name") {
-            return Some(line.splitn(2, ':').nth(1)?.trim().to_string());
+            return Some(line.split_once(':')?.1.trim().to_string());
         }
     }
     None
