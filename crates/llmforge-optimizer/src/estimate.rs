@@ -8,7 +8,9 @@
 // This module is consumed only by `lib.rs` (the `run_optimization` fallback
 // path). It has no I/O, no `unwrap()`, and cannot panic.
 
-use llmforge_core::{BenchmarkResult, HardwareProfile, ModelInfo, QuantizationStrategy, RuntimeConfig, SimdLevel};
+use llmforge_core::{
+    BenchmarkResult, HardwareProfile, ModelInfo, QuantizationStrategy, RuntimeConfig, SimdLevel,
+};
 
 use crate::search::bytes_per_param;
 
@@ -37,20 +39,20 @@ pub fn estimate_llamacpp(
     // Q4_K_M is the fastest quantization for llama.cpp; F16 is ~3.6× slower.
     let quant_mult = match config.quantization {
         QuantizationStrategy::Q4_K_M => 1.00,
-        QuantizationStrategy::Q4_0   => 0.95,
-        QuantizationStrategy::Q8_0   => 0.55,
-        QuantizationStrategy::F16    => 0.28,
-        QuantizationStrategy::Int8   => 0.55,
-        QuantizationStrategy::Int4   => 1.00,
+        QuantizationStrategy::Q4_0 => 0.95,
+        QuantizationStrategy::Q8_0 => 0.55,
+        QuantizationStrategy::F16 => 0.28,
+        QuantizationStrategy::Int8 => 0.55,
+        QuantizationStrategy::Int4 => 1.00,
     };
 
     // SIMD instruction-set multiplier.
     // AVX512 is ~50% faster than baseline AVX for matrix operations.
     let simd_mult = match hw.cpu.simd_level {
         SimdLevel::AVX512 => 1.5,
-        SimdLevel::AVX2   => 1.2,
-        SimdLevel::AVX    => 1.0,
-        SimdLevel::None   => 0.8,
+        SimdLevel::AVX2 => 1.2,
+        SimdLevel::AVX => 1.0,
+        SimdLevel::None => 0.8,
     };
 
     // Thread efficiency: diminishing returns above physical core count.
@@ -194,8 +196,10 @@ mod tests {
         let hw = base_hw(8, SimdLevel::AVX2);
         let model = model_with_params(Some(7_000_000_000));
 
-        let four_threads = estimate_llamacpp(&config(QuantizationStrategy::Q4_K_M, 4, 0), &model, &hw);
-        let eight_threads = estimate_llamacpp(&config(QuantizationStrategy::Q4_K_M, 8, 0), &model, &hw);
+        let four_threads =
+            estimate_llamacpp(&config(QuantizationStrategy::Q4_K_M, 4, 0), &model, &hw);
+        let eight_threads =
+            estimate_llamacpp(&config(QuantizationStrategy::Q4_K_M, 8, 0), &model, &hw);
 
         assert!(
             eight_threads.tokens_per_sec > four_threads.tokens_per_sec,

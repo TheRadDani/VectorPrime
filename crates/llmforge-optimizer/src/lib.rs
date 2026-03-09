@@ -71,32 +71,37 @@ pub async fn run_optimization(model: ModelInfo, hw: HardwareProfile) -> Result<O
             && llamacpp_results.iter().all(|(_, r)| {
                 r.as_ref()
                     .err()
-                    .map(|e| e.chain().any(|c| c.to_string().contains("was not found in PATH")))
+                    .map(|e| {
+                        e.chain()
+                            .any(|c| c.to_string().contains("was not found in PATH"))
+                    })
                     .unwrap_or(false)
             })
     };
 
     // If llama-cli is absent, replace failed LlamaCpp entries with static
     // hardware-aware estimates so select_best can still pick a winner.
-    let results: Vec<(llmforge_core::RuntimeConfig, anyhow::Result<llmforge_core::BenchmarkResult>)> =
-        if all_llamacpp_not_installed {
-            eprintln!(
-                "[llmforge] llama-cli not found — using hardware-aware estimates for GGUF configs"
-            );
-            results
-                .into_iter()
-                .map(|(cfg, outcome)| {
-                    if cfg.runtime == llmforge_core::RuntimeKind::LlamaCpp && outcome.is_err() {
-                        let est = estimate::estimate_llamacpp(&cfg, &model, &hw);
-                        (cfg, Ok(est))
-                    } else {
-                        (cfg, outcome)
-                    }
-                })
-                .collect()
-        } else {
-            results
-        };
+    let results: Vec<(
+        llmforge_core::RuntimeConfig,
+        anyhow::Result<llmforge_core::BenchmarkResult>,
+    )> = if all_llamacpp_not_installed {
+        eprintln!(
+            "[llmforge] llama-cli not found — using hardware-aware estimates for GGUF configs"
+        );
+        results
+            .into_iter()
+            .map(|(cfg, outcome)| {
+                if cfg.runtime == llmforge_core::RuntimeKind::LlamaCpp && outcome.is_err() {
+                    let est = estimate::estimate_llamacpp(&cfg, &model, &hw);
+                    (cfg, Ok(est))
+                } else {
+                    (cfg, outcome)
+                }
+            })
+            .collect()
+    } else {
+        results
+    };
 
     select_best(results, &hw).ok_or_else(|| {
         if failure_reasons.is_empty() {
