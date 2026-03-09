@@ -240,36 +240,109 @@ llmforge-bindings            (PyO3 native extension — _llmforge.so)
 
 ## Build From Source
 
-**Prerequisites:**
+### Prerequisites
 
-- Rust 1.75 or later (`rustup install stable`)
-- Python 3.9 or later
-- `maturin` (`pip install maturin` or `cargo install maturin`)
+| Tool | Minimum version | Install |
+|---|---|---|
+| Rust toolchain | 1.75 | `curl https://sh.rustup.rs -sSf \| sh` |
+| Python | 3.9 | [python.org](https://www.python.org/downloads/) or your system package manager |
+| maturin | 1.0 | `pip install maturin` |
+| cargo-tarpaulin *(optional, coverage)* | latest | `cargo install cargo-tarpaulin --locked` |
+
+> **Linux only:** install the Python development headers if they are not already present.  
+> Debian/Ubuntu: `sudo apt install python3-dev`  
+> Fedora/RHEL:   `sudo dnf install python3-devel`
+
+---
+
+### 1 · Clone and set up the environment
 
 ```bash
-# Clone the repository
 git clone https://github.com/YOUR_USERNAME/llm-forge
 cd llm-forge
 
-# Build the native extension and install into the current Python environment
-maturin develop
+# Create and activate an isolated Python environment (recommended)
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 
-# Alternatively, install in editable mode with pip
-pip install -e .
-
-# Run Rust tests
-cargo test --workspace
-
-# Run Python tests
-pytest tests/
+# Install Python build and test dependencies
+pip install --upgrade pip
+pip install maturin pytest pytest-cov onnxruntime numpy
 ```
 
-**Building a release wheel:**
+---
+
+### 2 · Build the native Rust extension
+
+```bash
+# Development build — compiles the Rust crates and installs the .so into the
+# active Python environment as an editable package (fastest iteration cycle)
+maturin develop
+
+# Verify the extension loaded correctly
+llmforge profile
+```
+
+You should see a JSON hardware profile printed to stdout. If you see an
+`ImportError`, run `cargo clean -p llmforge-bindings && maturin develop` to
+force a full recompile.
+
+---
+
+### 3 · Run the test suite
+
+```bash
+# Rust unit + integration tests (all crates)
+cargo test --workspace
+
+# Check code style
+cargo fmt --all -- --check
+
+# Linter (zero warnings enforced)
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Python tests (no model fixtures required)
+pytest tests/unit/ tests/integration/ -m "not requires_fixtures and not requires_gpu" -v
+```
+
+---
+
+### 4 · Check coverage (≥ 70 % gate)
+
+```bash
+# Run both Rust (tarpaulin) and Python (pytest-cov) coverage in one step
+bash scripts/coverity.sh
+
+# Override the threshold
+COVERAGE_THRESHOLD=80 bash scripts/coverity.sh
+```
+
+HTML reports are written to `coverage/rust/` and `coverage/python/htmlcov/`.
+
+---
+
+### 5 · Build a release wheel
 
 ```bash
 maturin build --release
 pip install target/wheels/llmforge-*.whl
+
+# Smoke-test the installed wheel
+llmforge profile
+llmforge optimize --help
 ```
+
+---
+
+### Common build issues
+
+| Symptom | Fix |
+|---|---|
+| `ImportError: dynamic module does not define module export function` | Stale build cache. Run `cargo clean -p llmforge-bindings && maturin develop`. |
+| `error[E0463]: can't find crate for …` | Run `rustup update stable` to ensure your toolchain matches the edition in `Cargo.toml`. |
+| `maturin: command not found` | Run `pip install maturin` inside your active virtual environment. |
+| Clippy `error: manual implementation of split_once` | Run `cargo fmt --all` then `cargo clippy --fix`. |
+| Low coverage gate failure | Add tests under `tests/unit/` until `bash scripts/coverity.sh` passes. |
 
 ---
 
