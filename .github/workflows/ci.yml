@@ -194,6 +194,9 @@ jobs:
       - name: Build and install llmforge in dev mode
         run: maturin build
 
+      - name: Install package
+        run: pip install -e .
+
       - name: Run coverage gate
         run: bash scripts/coverity.sh
 
