@@ -88,6 +88,51 @@ def cmd_optimize(args: argparse.Namespace) -> None:
             )
 
 
+def cmd_convert_to_onnx(args: argparse.Namespace) -> None:
+    input_path: str = args.input_path
+    output_path: str = args.output or _replace_ext(input_path, ".onnx")
+
+    try:
+        import llmforge._llmforge as _llmforge  # type: ignore[import]
+        result = _llmforge.convert_gguf_to_onnx(input_path, output_path)
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(_divider())
+    print("LLMForge Conversion Result")
+    print(_divider())
+    print(f"Input  (GGUF): {input_path}")
+    print(f"Output (ONNX): {result}")
+    print(_divider())
+
+
+def cmd_convert_to_gguf(args: argparse.Namespace) -> None:
+    input_path: str = args.input_path
+    output_path: str = args.output or _replace_ext(input_path, ".gguf")
+
+    try:
+        import llmforge._llmforge as _llmforge  # type: ignore[import]
+        result = _llmforge.convert_onnx_to_gguf(input_path, output_path)
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(_divider())
+    print("LLMForge Conversion Result")
+    print(_divider())
+    print(f"Input  (ONNX): {input_path}")
+    print(f"Output (GGUF): {result}")
+    print(_divider())
+
+
+def _replace_ext(path: str, new_ext: str) -> str:
+    """Return *path* with its extension replaced by *new_ext* (e.g. '.onnx')."""
+    import os
+    root, _ = os.path.splitext(path)
+    return root + new_ext
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llmforge",
@@ -146,6 +191,32 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    # convert-to-onnx
+    c2onnx = sub.add_parser(
+        "convert-to-onnx",
+        help="Convert a GGUF model to ONNX format.",
+    )
+    c2onnx.add_argument("input_path", help="Path to the source .gguf file.")
+    c2onnx.add_argument(
+        "--output",
+        default=None,
+        metavar="PATH",
+        help="Destination path for the .onnx file (default: same stem, .onnx extension).",
+    )
+
+    # convert-to-gguf
+    c2gguf = sub.add_parser(
+        "convert-to-gguf",
+        help="Convert an ONNX model to GGUF format.",
+    )
+    c2gguf.add_argument("input_path", help="Path to the source .onnx file.")
+    c2gguf.add_argument(
+        "--output",
+        default=None,
+        metavar="PATH",
+        help="Destination path for the .gguf file (default: same stem, .gguf extension).",
+    )
+
     return parser
 
 
@@ -156,6 +227,8 @@ def main() -> None:
     dispatch = {
         "profile": cmd_profile,
         "optimize": cmd_optimize,
+        "convert-to-onnx": cmd_convert_to_onnx,
+        "convert-to-gguf": cmd_convert_to_gguf,
     }
     dispatch[args.command](args)
 

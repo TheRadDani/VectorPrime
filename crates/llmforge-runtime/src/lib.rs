@@ -3,12 +3,17 @@
 //! This crate owns the [`AdapterRegistry`] (which maps [`RuntimeKind`] to a
 //! boxed [`RuntimeAdapter`]) and the [`dispatch`] function that drives the
 //! full benchmark cycle through a chosen adapter.
+//!
+//! It also exposes the [`convert`] module with [`convert::gguf_to_onnx`] and
+//! [`convert::onnx_to_gguf`] for cross-format model conversion.
 
+pub mod convert;
 pub mod dispatch;
 pub mod llamacpp;
 pub mod onnx;
 pub mod tensorrt;
 
+pub use convert::{gguf_to_onnx, onnx_to_gguf};
 pub use dispatch::dispatch;
 pub use llamacpp::LlamaCppAdapter;
 pub use onnx::OnnxAdapter;

@@ -22,6 +22,7 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
 use llmforge_core::{HardwareProfile, ModelFormat, ModelInfo, OptimizationResult};
+use llmforge_runtime::{gguf_to_onnx, onnx_to_gguf};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Error conversion helper
@@ -373,6 +374,68 @@ fn export_ollama(result: &PyOptimizationResult, output_dir: &str) -> PyResult<St
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Conversion functions
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Convert a GGUF model file to ONNX format.
+///
+/// Parameters
+/// ----------
+/// input_path : str
+///     Path to the source `.gguf` file.
+/// output_path : str
+///     Destination path for the produced `.onnx` file.
+///
+/// Returns
+/// -------
+/// str
+///     Absolute path to the written `.onnx` file.
+///
+/// Raises
+/// ------
+/// RuntimeError
+///     If `python3` is not found, required packages (`gguf`, `onnx`,
+///     `numpy`) are missing, or the input is not a valid GGUF file.
+#[pyfunction]
+fn convert_gguf_to_onnx(input_path: &str, output_path: &str) -> PyResult<String> {
+    let out = gguf_to_onnx(
+        std::path::Path::new(input_path),
+        std::path::Path::new(output_path),
+    )
+    .map_err(to_py_err)?;
+    Ok(out.to_string_lossy().into_owned())
+}
+
+/// Convert an ONNX model file to GGUF format.
+///
+/// Parameters
+/// ----------
+/// input_path : str
+///     Path to the source `.onnx` file.
+/// output_path : str
+///     Destination path for the produced `.gguf` file.
+///
+/// Returns
+/// -------
+/// str
+///     Absolute path to the written `.gguf` file.
+///
+/// Raises
+/// ------
+/// RuntimeError
+///     If `python3` is not found, required packages (`onnx`, `gguf`,
+///     `numpy`) are missing, or the input is not a valid ONNX file.
+#[pyfunction]
+fn convert_onnx_to_gguf(input_path: &str, output_path: &str) -> PyResult<String> {
+    let out = onnx_to_gguf(
+        std::path::Path::new(input_path),
+        std::path::Path::new(output_path),
+    )
+    .map_err(to_py_err)?;
+    Ok(out.to_string_lossy().into_owned())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Module registration
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -388,5 +451,7 @@ fn _llmforge(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(profile_hardware, m)?)?;
     m.add_function(wrap_pyfunction!(optimize, m)?)?;
     m.add_function(wrap_pyfunction!(export_ollama, m)?)?;
+    m.add_function(wrap_pyfunction!(convert_gguf_to_onnx, m)?)?;
+    m.add_function(wrap_pyfunction!(convert_onnx_to_gguf, m)?)?;
     Ok(())
 }
