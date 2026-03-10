@@ -31,17 +31,20 @@ mod tests {
 
     #[test]
     fn test_nvidia_parse() {
-        use crate::gpu::nvidia::{has_tensor_cores, parse_nvidia_csv};
+        use crate::gpu::nvidia::parse_nvidia_csv;
+        use vectorprime_core::GpuVendor;
 
         let info = parse_nvidia_csv("RTX 4090, 24564, 8.9").unwrap();
         assert_eq!(info.name, "RTX 4090");
         assert_eq!(info.vram_mb, 24564);
         assert_eq!(info.compute_capability, Some((8, 9)));
-        assert!(has_tensor_cores(info.compute_capability));
+        assert_eq!(info.vendor, GpuVendor::Nvidia);
 
-        // Older GPU below tensor-core threshold (SM 6.x Pascal)
+        // Older GPU — vendor is still reported as Nvidia regardless of
+        // compute capability; the optimizer no longer gates on capability.
         let old = parse_nvidia_csv("GTX 1080, 8192, 6.1").unwrap();
-        assert!(!has_tensor_cores(old.compute_capability));
+        assert_eq!(old.vendor, GpuVendor::Nvidia);
+        assert_eq!(old.compute_capability, Some((6, 1)));
 
         // Malformed input returns None gracefully
         assert!(parse_nvidia_csv("bad input").is_none());

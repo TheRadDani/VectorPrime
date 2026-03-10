@@ -1,6 +1,13 @@
-use vectorprime_core::{GpuInfo, GpuProbe};
+// Location: crates/vectorprime-hardware/src/gpu/nvidia.rs
+//
+// Implements the GpuProbe for NVIDIA GPUs by shelling out to `nvidia-smi`.
+// Called by gpu::probe_all() in mod.rs; the GpuInfo it returns flows into
+// HardwareProfile and from there into the optimizer candidate generator.
+
+use vectorprime_core::{GpuInfo, GpuProbe, GpuVendor};
 use std::process::Command;
 
+/// Probe implementation for NVIDIA GPUs via `nvidia-smi`.
 pub struct NvidiaProbe;
 
 impl GpuProbe for NvidiaProbe {
@@ -28,8 +35,10 @@ impl GpuProbe for NvidiaProbe {
 ///
 /// Expected format: `<name>, <vram_mb>, <major>.<minor>`
 /// Example:         `RTX 4090, 24564, 8.9`
+///
+/// Returns `None` on malformed input rather than panicking.
 pub fn parse_nvidia_csv(line: &str) -> Option<GpuInfo> {
-    // Use splitn(3) so GPU names with commas aren't accidentally split.
+    // Use splitn(3) so GPU names with commas are not accidentally split.
     let parts: Vec<&str> = line.splitn(3, ',').collect();
     if parts.len() < 3 {
         return None;
@@ -45,14 +54,8 @@ pub fn parse_nvidia_csv(line: &str) -> Option<GpuInfo> {
         name,
         vram_mb,
         compute_capability,
+        vendor: GpuVendor::Nvidia,
     })
-}
-
-/// Return `true` when the compute capability indicates Tensor Core support
-/// (SM 7.0 / Volta and later).
-#[allow(dead_code)]
-pub fn has_tensor_cores(cap: Option<(u32, u32)>) -> bool {
-    cap.is_some_and(|(major, _)| major >= 7)
 }
 
 fn parse_compute_cap(s: &str) -> Option<(u32, u32)> {

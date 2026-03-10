@@ -8,7 +8,7 @@
 // Used by: `crates/vectorprime-bindings/src/lib.rs` → `optimize()` to override
 // the auto-detected hardware profile when the user specifies `--gpu`.
 
-use vectorprime_core::GpuInfo;
+use vectorprime_core::{GpuInfo, GpuVendor};
 
 /// Resolve a user-supplied GPU model string to a [`GpuInfo`].
 ///
@@ -42,70 +42,83 @@ pub fn lookup_gpu(gpu_model: Option<&str>) -> Result<Option<GpuInfo>, String> {
             name: "NVIDIA GeForce RTX 4090".to_string(),
             vram_mb: 24_576,
             compute_capability: Some((8, 9)),
+            vendor: GpuVendor::Nvidia,
         },
         "4080" | "rtx4080" => GpuInfo {
             name: "NVIDIA GeForce RTX 4080".to_string(),
             vram_mb: 16_384,
             compute_capability: Some((8, 9)),
+            vendor: GpuVendor::Nvidia,
         },
         "4070ti" | "rtx4070ti" => GpuInfo {
             name: "NVIDIA GeForce RTX 4070 Ti".to_string(),
             vram_mb: 12_288,
             compute_capability: Some((8, 9)),
+            vendor: GpuVendor::Nvidia,
         },
         "4070" | "rtx4070" => GpuInfo {
             name: "NVIDIA GeForce RTX 4070".to_string(),
             vram_mb: 12_288,
             compute_capability: Some((8, 9)),
+            vendor: GpuVendor::Nvidia,
         },
         // ── Ampere consumer (compute 8.6) ─────────────────────────────────────
         "3090" | "rtx3090" => GpuInfo {
             name: "NVIDIA GeForce RTX 3090".to_string(),
             vram_mb: 24_576,
             compute_capability: Some((8, 6)),
+            vendor: GpuVendor::Nvidia,
         },
         "3080" | "rtx3080" => GpuInfo {
             name: "NVIDIA GeForce RTX 3080".to_string(),
             vram_mb: 10_240,
             compute_capability: Some((8, 6)),
+            vendor: GpuVendor::Nvidia,
         },
         "3070" | "rtx3070" => GpuInfo {
             name: "NVIDIA GeForce RTX 3070".to_string(),
             vram_mb: 8_192,
             compute_capability: Some((8, 6)),
+            vendor: GpuVendor::Nvidia,
         },
         "3060" | "rtx3060" => GpuInfo {
             name: "NVIDIA GeForce RTX 3060".to_string(),
             vram_mb: 12_288,
             compute_capability: Some((8, 6)),
+            vendor: GpuVendor::Nvidia,
         },
         // ── Turing consumer (compute 7.5) ─────────────────────────────────────
         "2080ti" | "rtx2080ti" => GpuInfo {
             name: "NVIDIA GeForce RTX 2080 Ti".to_string(),
             vram_mb: 11_264,
             compute_capability: Some((7, 5)),
+            vendor: GpuVendor::Nvidia,
         },
         "2080" | "rtx2080" => GpuInfo {
             name: "NVIDIA GeForce RTX 2080".to_string(),
             vram_mb: 8_192,
             compute_capability: Some((7, 5)),
+            vendor: GpuVendor::Nvidia,
         },
         // ── Ampere datacenter (compute 8.0) ───────────────────────────────────
         "a100" => GpuInfo {
             name: "NVIDIA A100".to_string(),
             vram_mb: 81_920,
             compute_capability: Some((8, 0)),
+            vendor: GpuVendor::Nvidia,
         },
         "a10g" => GpuInfo {
             name: "NVIDIA A10G".to_string(),
             vram_mb: 24_576,
             compute_capability: Some((8, 6)),
+            vendor: GpuVendor::Nvidia,
         },
         // ── Hopper datacenter (compute 9.0) ───────────────────────────────────
         "h100" => GpuInfo {
             name: "NVIDIA H100".to_string(),
             vram_mb: 81_920,
             compute_capability: Some((9, 0)),
+            vendor: GpuVendor::Nvidia,
         },
         // ── Unknown ───────────────────────────────────────────────────────────
         other => {

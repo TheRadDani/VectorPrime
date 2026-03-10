@@ -39,6 +39,19 @@ pub enum RuntimeKind {
     TensorRT,
 }
 
+/// GPU vendor, used to make runtime-eligibility decisions without hardcoding
+/// microarchitecture thresholds.
+///
+/// `Unknown` is the safe fallback when detection succeeds but vendor
+/// identification does not.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GpuVendor {
+    Nvidia,
+    Amd,
+    Apple,
+    Unknown,
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Hardware structs
 // ──────────────────────────────────────────────────────────────────────────────
@@ -62,7 +75,10 @@ pub struct GpuInfo {
     /// VRAM capacity in megabytes.
     pub vram_mb: u64,
     /// CUDA compute capability (e.g. `(8, 9)` for Ada Lovelace).
+    /// Only populated for NVIDIA GPUs; `None` for AMD and Apple.
     pub compute_capability: Option<(u32, u32)>,
+    /// Which GPU vendor produced this device.
+    pub vendor: GpuVendor,
 }
 
 /// RAM information collected from the host.
@@ -208,6 +224,7 @@ mod tests {
                 name: "NVIDIA RTX 4090".to_string(),
                 vram_mb: 24576,
                 compute_capability: Some((8, 9)),
+                vendor: GpuVendor::Nvidia,
             }),
             ram: RamInfo {
                 total_mb: 65536,
@@ -315,6 +332,7 @@ mod tests {
         assert_eq!(gpu.name, "NVIDIA RTX 4090");
         assert_eq!(gpu.vram_mb, 24576);
         assert_eq!(gpu.compute_capability, Some((8, 9)));
+        assert_eq!(gpu.vendor, GpuVendor::Nvidia);
         assert_eq!(restored.ram.total_mb, 65536);
         assert_eq!(restored.ram.available_mb, 32768);
     }

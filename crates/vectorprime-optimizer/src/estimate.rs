@@ -97,7 +97,7 @@ pub fn estimate_llamacpp(
 mod tests {
     use super::*;
     use vectorprime_core::{
-        CpuInfo, GpuInfo, HardwareProfile, ModelFormat, ModelInfo, RamInfo, RuntimeKind,
+        CpuInfo, GpuInfo, GpuVendor, HardwareProfile, ModelFormat, ModelInfo, RamInfo, RuntimeKind,
     };
     use std::path::PathBuf;
 
@@ -127,6 +127,7 @@ mod tests {
                 name: "NVIDIA RTX 4090".to_string(),
                 vram_mb: 24576,
                 compute_capability: Some((8, 9)),
+                vendor: GpuVendor::Nvidia,
             }),
             ram: RamInfo {
                 total_mb: 65536,
