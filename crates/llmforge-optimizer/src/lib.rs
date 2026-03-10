@@ -22,12 +22,17 @@ use llmforge_core::{HardwareProfile, ModelInfo, OptimizationResult};
 /// 1. Generate candidate configs via [`generate_candidates`].
 /// 2. Benchmark all candidates in parallel (≤ 3 concurrent) via
 ///    [`benchmark::run_benchmarks`].
-/// 3. Select the winner via [`select_best`].
+/// 3. Select the winner via [`select_best`], optionally constrained by
+///    `max_latency_ms`.
 ///
 /// Returns `Err` if no valid configuration was found, with a diagnostic
 /// message that includes the unique benchmark failure reasons so the user
 /// knows which runtime binaries are missing or misconfigured.
-pub async fn run_optimization(model: ModelInfo, hw: HardwareProfile) -> Result<OptimizationResult> {
+pub async fn run_optimization(
+    model: ModelInfo,
+    hw: HardwareProfile,
+    max_latency_ms: Option<f64>,
+) -> Result<OptimizationResult> {
     let candidates = generate_candidates(&hw, &model);
 
     if candidates.is_empty() {
@@ -103,13 +108,20 @@ pub async fn run_optimization(model: ModelInfo, hw: HardwareProfile) -> Result<O
         results
     };
 
-    select_best(results, &hw).ok_or_else(|| {
+    select_best(results, &hw, max_latency_ms).ok_or_else(|| {
         if failure_reasons.is_empty() {
-            // All benchmarks succeeded but results were filtered (e.g. OOM).
-            anyhow::anyhow!(
-                "no valid configuration found: all benchmark results exceeded the available \
-                 memory budget. Try freeing RAM or using a smaller model."
-            )
+            // All benchmarks succeeded but results were filtered (e.g. OOM or latency).
+            if let Some(limit) = max_latency_ms {
+                anyhow::anyhow!(
+                    "no valid configuration found: no configuration meets the latency \
+                     constraint of {limit:.1} ms. Try relaxing --latency or freeing RAM."
+                )
+            } else {
+                anyhow::anyhow!(
+                    "no valid configuration found: all benchmark results exceeded the available \
+                     memory budget. Try freeing RAM or using a smaller model."
+                )
+            }
         } else {
             let reasons = failure_reasons.join("; ");
             anyhow::anyhow!(

@@ -210,6 +210,10 @@ fn parse_model_format(format: &str) -> PyResult<ModelFormat> {
 ///     Pass `"cpu"` or omit to force CPU-only mode.  When provided this
 ///     value **completely replaces** the auto-detected GPU in the hardware
 ///     profile so that the optimizer plans for the specified hardware.
+/// max_latency_ms : float, optional
+///     Maximum tolerated inference latency in milliseconds. Configurations
+///     whose measured `latency_ms` exceeds this value are excluded.
+///     Omit (or pass `None`) to apply no latency constraint.
 ///
 /// Returns
 /// -------
@@ -222,8 +226,13 @@ fn parse_model_format(format: &str) -> PyResult<ModelFormat> {
 ///     If no valid configuration could be benchmarked, the path is invalid,
 ///     or an unrecognised GPU model string is supplied.
 #[pyfunction]
-#[pyo3(signature = (model_path, format, gpu=None))]
-fn optimize(model_path: &str, format: &str, gpu: Option<String>) -> PyResult<PyOptimizationResult> {
+#[pyo3(signature = (model_path, format, gpu=None, max_latency_ms=None))]
+fn optimize(
+    model_path: &str,
+    format: &str,
+    gpu: Option<String>,
+    max_latency_ms: Option<f64>,
+) -> PyResult<PyOptimizationResult> {
     let fmt = parse_model_format(format)?;
     let path = PathBuf::from(model_path);
 
@@ -252,7 +261,7 @@ fn optimize(model_path: &str, format: &str, gpu: Option<String>) -> PyResult<PyO
         .map_err(|e| PyRuntimeError::new_err(format!("failed to create tokio runtime: {e}")))?;
 
     let result = rt
-        .block_on(llmforge_optimizer::run_optimization(model, hw))
+        .block_on(llmforge_optimizer::run_optimization(model, hw, max_latency_ms))
         .map_err(to_py_err)?;
 
     Ok(PyOptimizationResult {

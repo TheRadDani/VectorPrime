@@ -6,12 +6,14 @@ use llmforge_core::{BenchmarkResult, HardwareProfile, OptimizationResult, Runtim
 /// Steps:
 /// 1. Drop `Err` entries (log them to stderr).
 /// 2. Drop configs whose `peak_memory_mb` exceeds 90 % of available RAM.
-/// 3. Sort survivors by `tokens_per_sec` descending.
-/// 4. Return the top result as [`OptimizationResult`], or `None` if nothing
+/// 3. Drop configs whose `latency_ms` exceeds `max_latency_ms` (when `Some`).
+/// 4. Sort survivors by `tokens_per_sec` descending.
+/// 5. Return the top result as [`OptimizationResult`], or `None` if nothing
 ///    survives.
 pub fn select_best(
     results: Vec<(RuntimeConfig, Result<BenchmarkResult>)>,
     hw: &HardwareProfile,
+    max_latency_ms: Option<f64>,
 ) -> Option<OptimizationResult> {
     let ram_budget_mb = (hw.ram.available_mb as f64 * 0.9) as u64;
 
@@ -25,6 +27,11 @@ pub fn select_best(
             }
         })
         .filter(|(_, metrics)| metrics.peak_memory_mb <= ram_budget_mb)
+        .filter(|(_, metrics)| {
+            max_latency_ms
+                .map(|limit| metrics.latency_ms <= limit)
+                .unwrap_or(true)
+        })
         .collect();
 
     // Sort descending by tokens_per_sec.
@@ -92,7 +99,7 @@ mod tests {
             (config(RuntimeKind::OnnxRuntime), ok_result(120.0, 2048)),
             (config(RuntimeKind::TensorRT), ok_result(80.0, 1536)),
         ];
-        let best = select_best(results, &hw(16384)).expect("should pick a winner");
+        let best = select_best(results, &hw(16384), None).expect("should pick a winner");
         assert!(
             (best.metrics.tokens_per_sec - 120.0).abs() < 0.001,
             "expected 120 tps, got {}",
@@ -109,7 +116,7 @@ mod tests {
             (config(RuntimeKind::LlamaCpp), ok_result(200.0, 4000)), // OOM
             (config(RuntimeKind::OnnxRuntime), ok_result(80.0, 1024)),
         ];
-        let best = select_best(results, &hw(4096)).expect("should pick OnnxRuntime");
+        let best = select_best(results, &hw(4096), None).expect("should pick OnnxRuntime");
         assert_eq!(best.config.runtime, RuntimeKind::OnnxRuntime);
         assert!(
             (best.metrics.tokens_per_sec - 80.0).abs() < 0.001,
@@ -120,7 +127,7 @@ mod tests {
 
     #[test]
     fn test_select_best_empty_input_returns_none() {
-        let result = select_best(vec![], &hw(16384));
+        let result = select_best(vec![], &hw(16384), None);
         assert!(result.is_none());
     }
 
@@ -136,7 +143,7 @@ mod tests {
                 Err(anyhow::anyhow!("also failed")),
             ),
         ];
-        let result = select_best(results, &hw(16384));
+        let result = select_best(results, &hw(16384), None);
         assert!(result.is_none());
     }
 
@@ -147,7 +154,42 @@ mod tests {
             (config(RuntimeKind::LlamaCpp), ok_result(50.0, 1000)),
             (config(RuntimeKind::OnnxRuntime), ok_result(80.0, 2000)),
         ];
-        let result = select_best(results, &hw(1000));
+        let result = select_best(results, &hw(1000), None);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_select_best_latency_filter_excludes_slow_configs() {
+        // LlamaCpp: 50 tps → latency = 20 ms.  OnnxRuntime: 10 tps → 100 ms.
+        // With a 50 ms budget only LlamaCpp survives even though it has lower tps.
+        let results = vec![
+            (config(RuntimeKind::LlamaCpp), ok_result(50.0, 1024)),
+            (config(RuntimeKind::OnnxRuntime), ok_result(10.0, 1024)),
+        ];
+        let best =
+            select_best(results, &hw(16384), Some(50.0)).expect("LlamaCpp should survive");
+        assert_eq!(best.config.runtime, RuntimeKind::LlamaCpp);
+    }
+
+    #[test]
+    fn test_select_best_latency_filter_all_too_slow_returns_none() {
+        // Both latencies exceed the 5 ms limit.
+        let results = vec![
+            (config(RuntimeKind::LlamaCpp), ok_result(50.0, 1024)),   // latency = 20 ms
+            (config(RuntimeKind::OnnxRuntime), ok_result(10.0, 1024)), // latency = 100 ms
+        ];
+        let result = select_best(results, &hw(16384), Some(5.0));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_select_best_no_latency_constraint_returns_highest_tps() {
+        // No latency constraint → same as original behaviour.
+        let results = vec![
+            (config(RuntimeKind::LlamaCpp), ok_result(50.0, 1024)),
+            (config(RuntimeKind::OnnxRuntime), ok_result(200.0, 1024)),
+        ];
+        let best = select_best(results, &hw(16384), None).expect("should pick OnnxRuntime");
+        assert_eq!(best.config.runtime, RuntimeKind::OnnxRuntime);
     }
 }

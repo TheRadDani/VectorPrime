@@ -167,8 +167,8 @@ class TestCmdProfile:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestCmdOptimize:
-    def _args(self, model_path, fmt=None, max_memory=None, gpu=None):
-        return argparse.Namespace(model_path=model_path, format=fmt, max_memory=max_memory, gpu=gpu)
+    def _args(self, model_path, fmt=None, max_memory=None, gpu=None, latency=None):
+        return argparse.Namespace(model_path=model_path, format=fmt, max_memory=max_memory, gpu=gpu, latency=latency)
 
     def test_unknown_extension_exits_1(self, capsys):
         from llmforge.cli import cmd_optimize

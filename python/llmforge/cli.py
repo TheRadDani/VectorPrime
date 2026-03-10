@@ -43,7 +43,7 @@ def cmd_optimize(args: argparse.Namespace) -> None:
 
     try:
         import llmforge._llmforge as _llmforge  # type: ignore[import]
-        result = _llmforge.optimize(model_path, fmt, args.gpu)
+        result = _llmforge.optimize(model_path, fmt, args.gpu, args.latency)
     except RuntimeError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
@@ -155,6 +155,13 @@ def build_parser() -> argparse.ArgumentParser:
             "Accepts case-insensitive names with optional spaces or dashes "
             "(e.g. 'RTX 4090', 'rtx-4090', '4090' all work)."
         ),
+    )
+    opt.add_argument(
+        "--latency",
+        type=float,
+        default=None,
+        metavar="MS",
+        help="Maximum tolerated latency in milliseconds. Configurations that exceed this threshold are excluded.",
     )
 
     # export-ollama
