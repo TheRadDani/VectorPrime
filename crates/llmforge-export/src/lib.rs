@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::Result;
-use llmforge_core::OptimizationResult;
+use llmforge_core::{OptimizationResult, QuantizationStrategy};
 
 /// Describes the files and commands produced by [`export_ollama`].
 #[derive(Debug)]
@@ -58,6 +58,56 @@ pub fn export_ollama(
     };
 
     Ok(manifest)
+}
+
+/// Re-quantize a GGUF model file using `llama-quantize`.
+///
+/// Maps `quant` to the string type argument expected by `llama-quantize`
+/// (e.g. `Q4_K_M` → `"q4_k_m"`, `F16` → `"f16"`), then shells out to:
+///
+/// ```text
+/// llama-quantize <input> <output> <type>
+/// ```
+///
+/// Returns an error if `llama-quantize` is not in PATH or exits non-zero.
+pub fn quantize_gguf(input: &Path, output: &Path, quant: &QuantizationStrategy) -> Result<()> {
+    // Check that llama-quantize is available before invoking it.
+    which::which("llama-quantize").map_err(|_| {
+        anyhow::anyhow!("llama-quantize not found — install llama.cpp to enable model quantization")
+    })?;
+
+    let quant_type = quant_to_llama_quantize_type(quant);
+
+    let status = Command::new("llama-quantize")
+        .arg(input)
+        .arg(output)
+        .arg(quant_type)
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to launch llama-quantize: {e}"))?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!(
+            "llama-quantize exited with code {:?}",
+            status.code()
+        ));
+    }
+
+    Ok(())
+}
+
+/// Map a [`QuantizationStrategy`] to the type string `llama-quantize` expects.
+///
+/// `Int8` and `Int4` fall back to the nearest GGUF equivalents (`q8_0` / `q4_0`)
+/// because `llama-quantize` does not have dedicated int8/int4 type identifiers.
+fn quant_to_llama_quantize_type(quant: &QuantizationStrategy) -> &'static str {
+    match quant {
+        QuantizationStrategy::F16 => "f16",
+        QuantizationStrategy::Q8_0 => "q8_0",
+        QuantizationStrategy::Q4_K_M => "q4_k_m",
+        QuantizationStrategy::Q4_0 => "q4_0",
+        QuantizationStrategy::Int8 => "q8_0",
+        QuantizationStrategy::Int4 => "q4_0",
+    }
 }
 
 /// Print a human-readable summary of an [`ExportManifest`] to stdout.
@@ -245,6 +295,52 @@ mod tests {
         assert!(
             msg.contains("convert_hf_to_gguf.py") || msg.contains("ONNX"),
             "expected descriptive error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_quant_to_llama_quantize_type_mappings() {
+        assert_eq!(
+            quant_to_llama_quantize_type(&QuantizationStrategy::F16),
+            "f16"
+        );
+        assert_eq!(
+            quant_to_llama_quantize_type(&QuantizationStrategy::Q8_0),
+            "q8_0"
+        );
+        assert_eq!(
+            quant_to_llama_quantize_type(&QuantizationStrategy::Q4_K_M),
+            "q4_k_m"
+        );
+        assert_eq!(
+            quant_to_llama_quantize_type(&QuantizationStrategy::Q4_0),
+            "q4_0"
+        );
+        assert_eq!(
+            quant_to_llama_quantize_type(&QuantizationStrategy::Int8),
+            "q8_0"
+        );
+        assert_eq!(
+            quant_to_llama_quantize_type(&QuantizationStrategy::Int4),
+            "q4_0"
+        );
+    }
+
+    #[test]
+    fn test_quantize_gguf_not_installed_returns_error() {
+        // If llama-quantize is not on PATH this should return a descriptive error.
+        if which::which("llama-quantize").is_ok() {
+            return; // binary present — cannot test the not-installed path
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("model.gguf");
+        let output = dir.path().join("model-optimized.gguf");
+        write_fake_gguf(&input);
+
+        let err = quantize_gguf(&input, &output, &QuantizationStrategy::Q4_K_M).unwrap_err();
+        assert!(
+            err.to_string().contains("llama-quantize"),
+            "unexpected error: {err}"
         );
     }
 

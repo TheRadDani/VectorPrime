@@ -166,8 +166,7 @@ mod tests {
             (config(RuntimeKind::LlamaCpp), ok_result(50.0, 1024)),
             (config(RuntimeKind::OnnxRuntime), ok_result(10.0, 1024)),
         ];
-        let best =
-            select_best(results, &hw(16384), Some(50.0)).expect("LlamaCpp should survive");
+        let best = select_best(results, &hw(16384), Some(50.0)).expect("LlamaCpp should survive");
         assert_eq!(best.config.runtime, RuntimeKind::LlamaCpp);
     }
 
@@ -175,7 +174,7 @@ mod tests {
     fn test_select_best_latency_filter_all_too_slow_returns_none() {
         // Both latencies exceed the 5 ms limit.
         let results = vec![
-            (config(RuntimeKind::LlamaCpp), ok_result(50.0, 1024)),   // latency = 20 ms
+            (config(RuntimeKind::LlamaCpp), ok_result(50.0, 1024)), // latency = 20 ms
             (config(RuntimeKind::OnnxRuntime), ok_result(10.0, 1024)), // latency = 100 ms
         ];
         let result = select_best(results, &hw(16384), Some(5.0));

@@ -8,7 +8,6 @@ import json
 import sys
 from contextlib import contextmanager
 from io import StringIO
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -40,19 +39,10 @@ def _mock_llmforge():
     result.latency_ms = 9.1
     result.peak_memory_mb = 4096
     result.to_json.return_value = json.dumps({"runtime": "LlamaCpp"})
+    # output_path is None by default (llama-quantize not installed in test env)
+    result.output_path = None
     m.optimize.return_value = result
-    m.optimize_from_json.return_value = result
 
-    manifest = {
-        "output_dir": "optimized_model",
-        "modelfile_path": "optimized_model/Modelfile",
-        "model_gguf_path": "optimized_model/model.gguf",
-        "ollama_commands": [
-            "ollama create mymodel -f optimized_model/Modelfile",
-            "ollama run mymodel",
-        ],
-    }
-    m.export_ollama.return_value = json.dumps(manifest)
     return m
 
 
@@ -116,18 +106,13 @@ class TestBuildParser:
         args = self.parser.parse_args(["optimize", "model.onnx", "--format", "onnx"])
         assert args.format == "onnx"
 
-    def test_export_ollama_defaults(self):
-        args = self.parser.parse_args(["export-ollama", "model.gguf"])
-        assert args.model_path == "model.gguf"
-        assert args.output_dir == "optimized_model"
-        assert args.result is None
+    def test_optimize_with_output(self):
+        args = self.parser.parse_args(["optimize", "model.gguf", "--output", "out.gguf"])
+        assert args.output == "out.gguf"
 
-    def test_export_ollama_with_result_and_output_dir(self):
-        args = self.parser.parse_args(
-            ["export-ollama", "model.gguf", "--result", "r.json", "--output-dir", "out/"]
-        )
-        assert args.result == "r.json"
-        assert args.output_dir == "out/"
+    def test_optimize_output_defaults_to_none(self):
+        args = self.parser.parse_args(["optimize", "model.gguf"])
+        assert args.output is None
 
     def test_no_subcommand_exits(self):
         with pytest.raises(SystemExit):
@@ -167,8 +152,15 @@ class TestCmdProfile:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestCmdOptimize:
-    def _args(self, model_path, fmt=None, max_memory=None, gpu=None, latency=None):
-        return argparse.Namespace(model_path=model_path, format=fmt, max_memory=max_memory, gpu=gpu, latency=latency)
+    def _args(self, model_path, fmt=None, max_memory=None, gpu=None, latency=None, output=None):
+        return argparse.Namespace(
+            model_path=model_path,
+            format=fmt,
+            max_memory=max_memory,
+            gpu=gpu,
+            latency=latency,
+            output=output,
+        )
 
     def test_unknown_extension_exits_1(self, capsys):
         from llmforge.cli import cmd_optimize
@@ -204,16 +196,14 @@ class TestCmdOptimize:
                 cmd_optimize(self._args("model.gguf", fmt="gguf"))
         assert exc.value.code == 1
 
-    def test_success_writes_result_file(self, tmp_path):
+    def test_no_json_result_file_written(self, tmp_path):
+        """The old .llmforge_result.json file must NOT be created."""
         from llmforge.cli import cmd_optimize
         model = tmp_path / "model.gguf"
         model.touch()
         with _patch_native():
             cmd_optimize(self._args(str(model), fmt="gguf"))
-        result_file = Path(str(model) + ".llmforge_result.json")
-        assert result_file.exists()
-        data = json.loads(result_file.read_text())
-        assert data["runtime"] == "LlamaCpp"
+        assert not (tmp_path / "model.gguf.llmforge_result.json").exists()
 
     def test_success_prints_all_fields(self, capsys, tmp_path):
         from llmforge.cli import cmd_optimize
@@ -224,6 +214,28 @@ class TestCmdOptimize:
         out = capsys.readouterr().out
         for field in ("Runtime:", "Quantization:", "Threads:", "GPU Layers:", "Throughput:", "Latency:", "Memory:"):
             assert field in out
+
+    def test_output_path_printed_when_quantized(self, capsys, tmp_path):
+        """When output_path is set on result, it should be printed."""
+        from llmforge.cli import cmd_optimize
+        model = tmp_path / "model.gguf"
+        model.touch()
+        mock = _mock_llmforge()
+        mock.optimize.return_value.output_path = str(tmp_path / "model-optimized.gguf")
+        with _patch_native(mock):
+            cmd_optimize(self._args(str(model), fmt="gguf"))
+        out = capsys.readouterr().out
+        assert "Optimized model written to:" in out
+
+    def test_note_printed_when_not_quantized(self, capsys, tmp_path):
+        """When output_path is None (llama-quantize absent), a NOTE goes to stderr."""
+        from llmforge.cli import cmd_optimize
+        model = tmp_path / "model.gguf"
+        model.touch()
+        with _patch_native():  # default mock has output_path = None
+            cmd_optimize(self._args(str(model), fmt="gguf"))
+        err = capsys.readouterr().err
+        assert "NOTE" in err
 
     def test_max_memory_warning_when_exceeded(self, capsys, tmp_path):
         from llmforge.cli import cmd_optimize
@@ -240,76 +252,9 @@ class TestCmdOptimize:
         model.touch()
         with _patch_native():
             cmd_optimize(self._args(str(model), fmt="gguf", max_memory=8192))
-        assert "WARNING" not in capsys.readouterr().err
-
-    def test_write_failure_prints_warning(self, capsys, tmp_path):
-        from llmforge.cli import cmd_optimize
-        model = tmp_path / "model.gguf"
-        model.touch()
-        with _patch_native():
-            with patch("llmforge.cli.Path") as mock_path_cls:
-                mock_path_cls.return_value.write_text.side_effect = OSError("disk full")
-                cmd_optimize(self._args(str(model), fmt="gguf"))
-        assert "WARNING" in capsys.readouterr().err
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# cli.cmd_export_ollama
-# ─────────────────────────────────────────────────────────────────────────────
-
-class TestCmdExportOllama:
-    def test_no_result_file_auto_optimize(self, capsys, tmp_path):
-        from llmforge.cli import cmd_export_ollama
-        model = tmp_path / "model.gguf"
-        model.touch()
-        args = argparse.Namespace(
-            model_path=str(model), output_dir="optimized_model", result=None
-        )
-        with _patch_native():
-            cmd_export_ollama(args)
-        out = capsys.readouterr().out
-        assert "optimized_model" in out
-        assert "ollama" in out.lower()
-
-    def test_with_result_file(self, capsys, tmp_path):
-        """--result path: read JSON then call export_ollama (no optimize_from_json)."""
-        from llmforge.cli import cmd_export_ollama
-        model = tmp_path / "model.gguf"
-        model.touch()
-        result_file = tmp_path / "result.json"
-        result_file.write_text('{"runtime": "LlamaCpp"}', encoding="utf-8")
-        args = argparse.Namespace(
-            model_path=str(model), output_dir="optimized_model", result=str(result_file)
-        )
-        # The --result branch calls _llmforge.optimize_from_json which only
-        # exists on the MagicMock, so we must ensure the mock is active.
-        with _patch_native():
-            cmd_export_ollama(args)
-        out = capsys.readouterr().out
-        assert "Modelfile" in out
-
-    def test_runtime_error_exits_1(self, capsys, tmp_path):
-        from llmforge.cli import cmd_export_ollama
-        model = tmp_path / "model.gguf"
-        model.touch()
-        mock = _mock_llmforge()
-        mock.optimize.side_effect = RuntimeError("no llamacpp binary")
-        args = argparse.Namespace(
-            model_path=str(model), output_dir="optimized_model", result=None
-        )
-        with _patch_native(mock):
-            with pytest.raises(SystemExit) as exc:
-                cmd_export_ollama(args)
-        assert exc.value.code == 1
-
-    def test_unknown_extension_raises_value_error_exits_1(self, capsys):
-        from llmforge.cli import cmd_export_ollama
-        args = argparse.Namespace(
-            model_path="model.bin", output_dir="optimized_model", result=None
-        )
-        with pytest.raises(SystemExit) as exc:
-            cmd_export_ollama(args)
-        assert exc.value.code == 1
+        # The "NOTE" about llama-quantize will appear in err, but not "WARNING"
+        err = capsys.readouterr().err
+        assert "WARNING" not in err
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -328,13 +273,6 @@ class TestMain:
         from llmforge import cli
         with patch.object(cli, "cmd_optimize") as mock_cmd:
             with patch("sys.argv", ["llmforge", "optimize", "model.gguf"]):
-                cli.main()
-            mock_cmd.assert_called_once()
-
-    def test_dispatches_export_ollama(self):
-        from llmforge import cli
-        with patch.object(cli, "cmd_export_ollama") as mock_cmd:
-            with patch("sys.argv", ["llmforge", "export-ollama", "model.gguf"]):
                 cli.main()
             mock_cmd.assert_called_once()
 

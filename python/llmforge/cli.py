@@ -1,9 +1,7 @@
 """LLMForge command-line interface."""
 
 import argparse
-import json
 import sys
-from pathlib import Path
 
 
 def detect_format(path: str) -> str:
@@ -41,11 +39,20 @@ def cmd_optimize(args: argparse.Namespace) -> None:
             print(f"ERROR: {e}", file=sys.stderr)
             sys.exit(1)
 
+    output: str | None = getattr(args, "output", None)
+
     try:
         import llmforge._llmforge as _llmforge  # type: ignore[import]
-        result = _llmforge.optimize(model_path, fmt, args.gpu, args.latency)
+        result = _llmforge.optimize(model_path, fmt, args.gpu, args.latency, output)
     except RuntimeError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+        msg = str(e)
+        if "llama-quantize" in msg:
+            print(
+                "llama-quantize not found — install llama.cpp to enable model quantization",
+                file=sys.stderr,
+            )
+        else:
+            print(f"ERROR: {msg}", file=sys.stderr)
         sys.exit(1)
 
     # Formatted summary.
@@ -61,13 +68,15 @@ def cmd_optimize(args: argparse.Namespace) -> None:
     print(f"Memory:        {result.peak_memory_mb / 1024:.1f} GB peak")
     print(_divider())
 
-    # Persist result alongside the model file.
-    out_path = model_path + ".llmforge_result.json"
-    try:
-        Path(out_path).write_text(result.to_json(), encoding="utf-8")
-        print(f"Result written to: {out_path}")
-    except OSError as e:
-        print(f"WARNING: could not write result file: {e}", file=sys.stderr)
+    # Report the re-quantized output path when quantization succeeded.
+    if result.output_path is not None:
+        print(f"Optimized model written to: {result.output_path}")
+    else:
+        print(
+            "NOTE: llama-quantize not found — model was not re-quantized. "
+            "Install llama.cpp to enable quantization.",
+            file=sys.stderr,
+        )
 
     # Honour --max-memory (informational only at this stage).
     if args.max_memory is not None:
@@ -77,42 +86,6 @@ def cmd_optimize(args: argparse.Namespace) -> None:
                 f"WARNING: peak memory {peak_mb} MB exceeds --max-memory {args.max_memory} MB",
                 file=sys.stderr,
             )
-
-
-def cmd_export_ollama(args: argparse.Namespace) -> None:
-    model_path: str = args.model_path
-    output_dir: str = args.output_dir
-    result_file: str | None = args.result
-
-    try:
-        import llmforge._llmforge as _llmforge  # type: ignore[import]
-
-        if result_file:
-            # Load pre-computed result from JSON — reconstruct via a round-trip
-            # through optimize() is not possible here, so we rely on the native
-            # module's export path accepting an OptimizationResult directly.
-            # For now we run a fresh optimize() if no native deserializer exists.
-            # The simplest correct approach: pass model_path + result JSON to
-            # export_ollama via a temp-loaded result object.
-            result_json = Path(result_file).read_text(encoding="utf-8")
-            result = _llmforge.optimize_from_json(result_json)
-        else:
-            fmt = detect_format(model_path)
-            result = _llmforge.optimize(model_path, fmt)
-
-        manifest_json: str = _llmforge.export_ollama(result, output_dir)
-    except (RuntimeError, ValueError) as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    manifest = json.loads(manifest_json)
-    print(f"Output directory : {manifest['output_dir']}")
-    print(f"Modelfile        : {manifest['modelfile_path']}")
-    print(f"Model (GGUF)     : {manifest['model_gguf_path']}")
-    print()
-    print("Run with Ollama:")
-    for cmd in manifest.get("ollama_commands", []):
-        print(f"  {cmd}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -163,24 +136,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="MS",
         help="Maximum tolerated latency in milliseconds. Configurations that exceed this threshold are excluded.",
     )
-
-    # export-ollama
-    exp = sub.add_parser(
-        "export-ollama",
-        help="Export an optimized model as an Ollama bundle.",
-    )
-    exp.add_argument("model_path", help="Path to the model file (.gguf or .onnx).")
-    exp.add_argument(
-        "--result",
+    opt.add_argument(
+        "--output",
         default=None,
-        metavar="FILE",
-        help="Path to a .llmforge_result.json file produced by 'optimize'.",
-    )
-    exp.add_argument(
-        "--output-dir",
-        default="optimized_model",
-        metavar="DIR",
-        help="Directory for the Ollama bundle (default: optimized_model/).",
+        metavar="PATH",
+        help=(
+            "Destination path for the re-quantized output model "
+            "(default: {stem}-optimized.gguf next to the input file)."
+        ),
     )
 
     return parser
@@ -193,7 +156,6 @@ def main() -> None:
     dispatch = {
         "profile": cmd_profile,
         "optimize": cmd_optimize,
-        "export-ollama": cmd_export_ollama,
     }
     dispatch[args.command](args)
 

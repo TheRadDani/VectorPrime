@@ -104,12 +104,16 @@ impl PyHardwareProfile {
 
 /// Python-facing wrapper around [`OptimizationResult`].
 ///
-/// Returned by `optimize()`. Pass to `export_ollama()` to create an Ollama bundle.
+/// Returned by `optimize()`. Contains both the benchmark result and the path
+/// to the re-quantized model produced by `llama-quantize`.
 #[pyclass(name = "OptimizationResult")]
 pub struct PyOptimizationResult {
     inner: OptimizationResult,
     /// Original model path — needed for `export_ollama` downstream.
     model_path: PathBuf,
+    /// Path to the re-quantized output model, or `None` if quantization was
+    /// skipped (e.g. because `llama-quantize` is not installed).
+    output_path: Option<PathBuf>,
 }
 
 #[pymethods]
@@ -170,6 +174,15 @@ impl PyOptimizationResult {
     fn peak_memory_mb(&self) -> u64 {
         self.inner.metrics.peak_memory_mb
     }
+
+    /// Path to the re-quantized output model, or `None` if `llama-quantize`
+    /// was not available and quantization was skipped.
+    #[getter]
+    fn output_path(&self) -> Option<String> {
+        self.output_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -199,6 +212,10 @@ fn parse_model_format(format: &str) -> PyResult<ModelFormat> {
 
 /// Run the full optimization pipeline for the given model.
 ///
+/// After finding the best configuration, re-quantizes the model using
+/// `llama-quantize` (if available) and writes `{stem}-optimized.gguf` next to
+/// the input file (or to `output_path` when supplied).
+///
 /// Parameters
 /// ----------
 /// model_path : str
@@ -214,11 +231,16 @@ fn parse_model_format(format: &str) -> PyResult<ModelFormat> {
 ///     Maximum tolerated inference latency in milliseconds. Configurations
 ///     whose measured `latency_ms` exceeds this value are excluded.
 ///     Omit (or pass `None`) to apply no latency constraint.
+/// output_path : str, optional
+///     Destination path for the re-quantized `.gguf` file.  When omitted the
+///     output is placed next to the input as `{stem}-optimized.gguf`.
 ///
 /// Returns
 /// -------
 /// OptimizationResult
-///     The best runtime configuration found for this hardware.
+///     The best runtime configuration found for this hardware.  The
+///     `output_path` attribute contains the path to the re-quantized model,
+///     or `None` if `llama-quantize` was not available.
 ///
 /// Raises
 /// ------
@@ -226,12 +248,13 @@ fn parse_model_format(format: &str) -> PyResult<ModelFormat> {
 ///     If no valid configuration could be benchmarked, the path is invalid,
 ///     or an unrecognised GPU model string is supplied.
 #[pyfunction]
-#[pyo3(signature = (model_path, format, gpu=None, max_latency_ms=None))]
+#[pyo3(signature = (model_path, format, gpu=None, max_latency_ms=None, output_path=None))]
 fn optimize(
     model_path: &str,
     format: &str,
     gpu: Option<String>,
     max_latency_ms: Option<f64>,
+    output_path: Option<String>,
 ) -> PyResult<PyOptimizationResult> {
     let fmt = parse_model_format(format)?;
     let path = PathBuf::from(model_path);
@@ -261,13 +284,52 @@ fn optimize(
         .map_err(|e| PyRuntimeError::new_err(format!("failed to create tokio runtime: {e}")))?;
 
     let result = rt
-        .block_on(llmforge_optimizer::run_optimization(model, hw, max_latency_ms))
+        .block_on(llmforge_optimizer::run_optimization(
+            model,
+            hw,
+            max_latency_ms,
+        ))
         .map_err(to_py_err)?;
+
+    // Derive the output path: either the caller-supplied value, or
+    // `{stem}-optimized.gguf` placed next to the input file.
+    let derived_output = derive_output_path(&path, output_path.as_deref());
+
+    // Attempt re-quantization; if llama-quantize is absent we degrade
+    // gracefully rather than failing the whole optimization.
+    let quantized_path =
+        match llmforge_export::quantize_gguf(&path, &derived_output, &result.config.quantization) {
+            Ok(()) => Some(derived_output),
+            Err(_) => None,
+        };
 
     Ok(PyOptimizationResult {
         inner: result,
         model_path: path,
+        output_path: quantized_path,
     })
+}
+
+/// Compute the output path for the re-quantized model.
+///
+/// Uses the caller-supplied path when present; otherwise derives
+/// `{stem}-optimized.gguf` in the same directory as `input`.
+fn derive_output_path(input: &Path, output_path: Option<&str>) -> PathBuf {
+    if let Some(p) = output_path {
+        return PathBuf::from(p);
+    }
+
+    // Derive {stem}-optimized.gguf next to the input, or in CWD if no parent.
+    let stem = input
+        .file_stem()
+        .unwrap_or_else(|| std::ffi::OsStr::new("model"))
+        .to_string_lossy();
+    let file_name = format!("{stem}-optimized.gguf");
+
+    match input.parent() {
+        Some(parent) if parent != Path::new("") => parent.join(file_name),
+        _ => PathBuf::from(file_name),
+    }
 }
 
 /// Export an optimized model as an Ollama-compatible bundle.

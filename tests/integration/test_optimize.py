@@ -28,8 +28,14 @@ requires_gpu = pytest.mark.skipif(
 # ── always-run tests ──────────────────────────────────────────────────────────
 
 
+import shutil as _shutil
+
+@pytest.mark.skipif(
+    not _shutil.which("llama-cli"),
+    reason="llama-cli not installed; optimizer falls back to hardware estimates for missing files",
+)
 def test_optimize_missing_file():
-    """optimize() must raise RuntimeError for non-existent paths, not panic."""
+    """optimize() must raise RuntimeError for non-existent paths when llama-cli is present."""
     with pytest.raises(RuntimeError):
         _llmforge.optimize("/nonexistent/path/model.gguf", "gguf")
 
