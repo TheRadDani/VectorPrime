@@ -5,14 +5,31 @@ build-backend = "maturin"
 [project]
 name = "vectorprime"
 version = "0.1.0"
+description = "Hardware-aware LLM optimization and quantization toolkit"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
+readme = "README.md"
+
+authors = [
+  { name = "Daniel Ferreto" }
+]
 
 dependencies = [
     "numpy",
     "gguf",
     "onnx"
 ]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: MIT License"
+]
+
+[project.urls]
+Homepage = "https://github.com/TheRadDani/VectorPrime"
+Repository = "https://github.com/TheRadDani/VectorPrime"
 
 [project.scripts]
 vectorprime = "vectorprime.cli:main"
@@ -21,4 +38,3 @@ vectorprime = "vectorprime.cli:main"
 python-source = "python"
 module-name = "vectorprime._vectorprime"
 manifest-path = "crates/vectorprime-bindings/Cargo.toml"
-
