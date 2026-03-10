@@ -13,9 +13,8 @@ scripts/
 __pycache__/
 *.pyc
 *.pyo
-# Dev/CI config and documentation
+# Dev/CI config and documentation (exclude all .md except README which maturin reads)
 pytest.ini
-*.md
 SECURITY.md
 LICENSE_NOTICE
 __pycache__

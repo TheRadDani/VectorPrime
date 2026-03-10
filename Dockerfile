@@ -56,38 +56,32 @@
 # =============================================================================
 FROM ghcr.io/pyo3/maturin:latest AS builder
 
-# Switch to root to install any OS-level deps (the base image may run as a
-# non-root user — we only do system work here, not build work).
-USER root
-
 # Install protobuf compiler. vectorprime-model-ir uses the onnx-protobuf crate
 # which requires protoc to be present at build time.
+# The image runs as root; no user switching is required.
 RUN yum install -y protobuf-compiler \
     && yum clean all \
     && rm -rf /var/cache/yum
 
-# Return to the maturin-provided build user (uid 1000 in this image)
-USER maturin
-
-WORKDIR /workspace
+WORKDIR /io
 
 # ---------------------------------------------------------------------------
 # Copy dependency manifests first — these layers are cheap to rebuild when
 # only source code changes. Cargo will restore from cache if neither
 # Cargo.toml nor Cargo.lock changed.
 # ---------------------------------------------------------------------------
-COPY --chown=maturin:maturin Cargo.toml Cargo.lock ./
-COPY --chown=maturin:maturin pyproject.toml LICENSE ./
+COPY Cargo.toml Cargo.lock ./
+COPY pyproject.toml LICENSE README.md ./
 
 # Copy each crate's Cargo.toml so Cargo can resolve the workspace graph
 # without all source files present. This primes the registry download layer.
-COPY --chown=maturin:maturin crates/vectorprime-core/Cargo.toml      crates/vectorprime-core/Cargo.toml
-COPY --chown=maturin:maturin crates/vectorprime-hardware/Cargo.toml  crates/vectorprime-hardware/Cargo.toml
-COPY --chown=maturin:maturin crates/vectorprime-runtime/Cargo.toml   crates/vectorprime-runtime/Cargo.toml
-COPY --chown=maturin:maturin crates/vectorprime-optimizer/Cargo.toml crates/vectorprime-optimizer/Cargo.toml
-COPY --chown=maturin:maturin crates/vectorprime-export/Cargo.toml    crates/vectorprime-export/Cargo.toml
-COPY --chown=maturin:maturin crates/vectorprime-model-ir/Cargo.toml  crates/vectorprime-model-ir/Cargo.toml
-COPY --chown=maturin:maturin crates/vectorprime-bindings/Cargo.toml  crates/vectorprime-bindings/Cargo.toml
+COPY crates/vectorprime-core/Cargo.toml      crates/vectorprime-core/Cargo.toml
+COPY crates/vectorprime-hardware/Cargo.toml  crates/vectorprime-hardware/Cargo.toml
+COPY crates/vectorprime-runtime/Cargo.toml   crates/vectorprime-runtime/Cargo.toml
+COPY crates/vectorprime-optimizer/Cargo.toml crates/vectorprime-optimizer/Cargo.toml
+COPY crates/vectorprime-export/Cargo.toml    crates/vectorprime-export/Cargo.toml
+COPY crates/vectorprime-model-ir/Cargo.toml  crates/vectorprime-model-ir/Cargo.toml
+COPY crates/vectorprime-bindings/Cargo.toml  crates/vectorprime-bindings/Cargo.toml
 
 # Pre-fetch Cargo registry index + download all dependencies.
 # We create stub lib.rs files so `cargo fetch` can resolve the full dep graph
@@ -109,8 +103,8 @@ RUN bash -euxo pipefail -c ' \
 # ---------------------------------------------------------------------------
 # Now copy the full source tree (invalidates from here on source changes).
 # ---------------------------------------------------------------------------
-COPY --chown=maturin:maturin crates/ ./crates/
-COPY --chown=maturin:maturin python/ ./python/
+COPY crates/ ./crates/
+COPY python/ ./python/
 
 # ---------------------------------------------------------------------------
 # Build manylinux-compatible wheels for Python 3.9, 3.10, 3.11, and 3.12.
@@ -144,8 +138,15 @@ RUN maturin build \
 FROM python:3.12-slim AS publisher
 
 # Install twine — the standard PyPI upload tool.
-# Pinned to a recent stable range to ensure reproducible uploads.
-RUN pip install --no-cache-dir "twine>=5.0,<6.0"
+# twine>=6.0 is required: maturin 1.8+ generates Metadata-Version 2.4 wheels,
+# and twine 5.x only validates up to 2.3 (causing a spurious "missing Name/
+# Version" error). twine 6.0.0 added full Metadata-Version 2.4 support.
+RUN pip install --no-cache-dir "twine"
+
+# Cache-bust: changing VERSION forces Docker to re-run the COPY when the
+# project version is bumped, preventing stale wheel artifacts from being
+# reused across version releases.
+ARG VERSION=0.1.0
 
 # Copy the built wheels from the builder stage.
 COPY --from=builder /dist /dist
@@ -162,8 +163,8 @@ ARG TWINE_REPOSITORY_URL=https://upload.pypi.org/legacy/
 # TWINE_USERNAME must be the literal "__token__" when using API tokens.
 RUN --mount=type=secret,id=pypi_token \
     set -euxo pipefail \
-    && twine check /dist/*.whl \
+    && twine check /dist/*manylinux*.whl \
     && TWINE_USERNAME=__token__ \
        TWINE_PASSWORD="$(cat /run/secrets/pypi_token)" \
        TWINE_REPOSITORY_URL="${TWINE_REPOSITORY_URL}" \
-       twine upload --non-interactive /dist/*.whl
+       twine upload --non-interactive /dist/*manylinux*.whl --verbose

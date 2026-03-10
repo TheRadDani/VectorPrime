@@ -5,13 +5,23 @@ build-backend = "maturin"
 [project]
 name = "vectorprime"
 version = "0.1.0"
-description = "Hardware-aware LLM optimization and quantization toolkit"
+description = "Hardware-aware CLI that selects the best runtime and quantization for efficient LLM inference."
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
-readme = "README.md"
+readme = { file = "README.md", content-type = "text/markdown" }
 
 authors = [
-  { name = "Daniel Ferreto" }
+  { name = "Daniel Ferreto", email = "ldanielfch@gmail.com" }
+]
+
+keywords = [
+  "llm",
+  "quantization",
+  "inference",
+  "optimization",
+  "vectorization",
+  "ai",
+  "machine-learning"
 ]
 
 dependencies = [
@@ -21,15 +31,19 @@ dependencies = [
 ]
 
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Rust",
-    "Operating System :: OS Independent",
-    "License :: OSI Approved :: MIT License"
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Rust",
+  "Operating System :: OS Independent",
+  "License :: OSI Approved :: MIT License"
 ]
 
 [project.urls]
-Homepage = "https://github.com/TheRadDani/VectorPrime"
+Homepage   = "https://github.com/TheRadDani/VectorPrime"
 Repository = "https://github.com/TheRadDani/VectorPrime"
+Issues     = "https://github.com/TheRadDani/VectorPrime/issues"
 
 [project.scripts]
 vectorprime = "vectorprime.cli:main"

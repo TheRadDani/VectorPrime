@@ -267,3 +267,5 @@ else
   fail "${FAILURES} step(s) failed — release may be incomplete."
   exit 1
 fi
+
+docker build   --secret id=pypi_token,env=PYPI_TOKEN   -t vectorprime-publisher .
