@@ -5,8 +5,15 @@
 
 version: 2
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: "cargo"
+    directory: "/"
     schedule:
       interval: "weekly"
-      
+    ignore:
+      # onnx-protobuf 0.2.3 hardcodes a VERSION_3_4_0 compile-time check;
+      # protobuf cannot be upgraded until onnx-protobuf publishes a new release.
+      - dependency-name: "protobuf"
+        versions: ["*"]
+      - dependency-name: "protobuf-support"
+        versions: ["*"]
+
