@@ -1,0 +1,21 @@
+target/
+dist/
+.git
+.gitignore
+coverage/
+docs/
+tests/
+scripts/
+# Large model/binary files not needed in build context
+*.gguf
+*.onnx
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+# Dev/CI config and documentation
+pytest.ini
+*.md
+SECURITY.md
+LICENSE_NOTICE
+__pycache__
