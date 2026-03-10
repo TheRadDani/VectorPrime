@@ -39,7 +39,22 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Check formatting
+        id: fmt
         run: cargo fmt --all -- --check
+        continue-on-error: true
+      
+      - name: Apply automatic formatting fixes
+        if: steps.fmt.outcome == 'failure'
+        run: cargo fmt --all
+
+      - name: Commit formatting changes
+        if: steps.fmt.outcome == 'failure'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Apply automatic code formatting fixes"
+          git push
 
       - name: Clippy (deny warnings)
         run: cargo clippy --all-targets --all-features -- -D warnings
