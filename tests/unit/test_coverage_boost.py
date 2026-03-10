@@ -276,6 +276,20 @@ class TestMain:
                 cli.main()
             mock_cmd.assert_called_once()
 
+    def test_dispatches_convert_to_onnx(self):
+        from llmforge import cli
+        with patch.object(cli, "cmd_convert_to_onnx") as mock_cmd:
+            with patch("sys.argv", ["llmforge", "convert-to-onnx", "model.gguf"]):
+                cli.main()
+            mock_cmd.assert_called_once()
+
+    def test_dispatches_convert_to_gguf(self):
+        from llmforge import cli
+        with patch.object(cli, "cmd_convert_to_gguf") as mock_cmd:
+            with patch("sys.argv", ["llmforge", "convert-to-gguf", "model.onnx"]):
+                cli.main()
+            mock_cmd.assert_called_once()
+
     def test_no_subcommand_exits(self):
         with patch("sys.argv", ["llmforge"]):
             with pytest.raises(SystemExit):
@@ -469,3 +483,153 @@ class TestOnnxRunnerMain:
                 with pytest.raises(SystemExit):
                     onnx_runner.main()
         assert "error" in capsys.readouterr().out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# cli._replace_ext
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestReplaceExt:
+    def test_replaces_gguf_with_onnx(self):
+        from llmforge.cli import _replace_ext
+        assert _replace_ext("model.gguf", ".onnx") == "model.onnx"
+
+    def test_replaces_onnx_with_gguf(self):
+        from llmforge.cli import _replace_ext
+        assert _replace_ext("model.onnx", ".gguf") == "model.gguf"
+
+    def test_preserves_directory(self):
+        from llmforge.cli import _replace_ext
+        assert _replace_ext("/data/models/llama.gguf", ".onnx") == "/data/models/llama.onnx"
+
+    def test_no_extension(self):
+        from llmforge.cli import _replace_ext
+        assert _replace_ext("modelfile", ".onnx") == "modelfile.onnx"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# cli.build_parser — convert subcommands
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestBuildParserConvert:
+    def setup_method(self):
+        from llmforge.cli import build_parser
+        self.parser = build_parser()
+
+    def test_convert_to_onnx_required_arg(self):
+        args = self.parser.parse_args(["convert-to-onnx", "model.gguf"])
+        assert args.input_path == "model.gguf"
+        assert args.output is None
+
+    def test_convert_to_onnx_with_output(self):
+        args = self.parser.parse_args(["convert-to-onnx", "model.gguf", "--output", "out.onnx"])
+        assert args.output == "out.onnx"
+
+    def test_convert_to_gguf_required_arg(self):
+        args = self.parser.parse_args(["convert-to-gguf", "model.onnx"])
+        assert args.input_path == "model.onnx"
+        assert args.output is None
+
+    def test_convert_to_gguf_with_output(self):
+        args = self.parser.parse_args(["convert-to-gguf", "model.onnx", "--output", "out.gguf"])
+        assert args.output == "out.gguf"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# cli.cmd_convert_to_onnx
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestCmdConvertToOnnx:
+    def _args(self, input_path, output=None):
+        return argparse.Namespace(input_path=input_path, output=output)
+
+    def test_success_prints_result(self, capsys, tmp_path):
+        from llmforge.cli import cmd_convert_to_onnx
+        mock = _mock_llmforge()
+        out_path = str(tmp_path / "model.onnx")
+        mock.convert_gguf_to_onnx.return_value = out_path
+        with _patch_native(mock):
+            cmd_convert_to_onnx(self._args(str(tmp_path / "model.gguf")))
+        out = capsys.readouterr().out
+        assert "LLMForge Conversion Result" in out
+        assert "model.onnx" in out
+
+    def test_default_output_derived_from_input(self, capsys, tmp_path):
+        """When --output is omitted the output path gets .onnx extension."""
+        from llmforge.cli import cmd_convert_to_onnx
+        mock = _mock_llmforge()
+        input_path = str(tmp_path / "model.gguf")
+        expected_out = str(tmp_path / "model.onnx")
+        mock.convert_gguf_to_onnx.return_value = expected_out
+        with _patch_native(mock):
+            cmd_convert_to_onnx(self._args(input_path))
+        # Verify the binding was called with the derived output path
+        mock.convert_gguf_to_onnx.assert_called_once_with(input_path, expected_out)
+
+    def test_explicit_output_passed_through(self, capsys, tmp_path):
+        from llmforge.cli import cmd_convert_to_onnx
+        mock = _mock_llmforge()
+        out_path = "/custom/output.onnx"
+        mock.convert_gguf_to_onnx.return_value = out_path
+        with _patch_native(mock):
+            cmd_convert_to_onnx(self._args("model.gguf", output=out_path))
+        mock.convert_gguf_to_onnx.assert_called_once_with("model.gguf", out_path)
+
+    def test_runtime_error_exits_1(self, capsys):
+        from llmforge.cli import cmd_convert_to_onnx
+        mock = _mock_llmforge()
+        mock.convert_gguf_to_onnx.side_effect = RuntimeError("python3 not found")
+        with _patch_native(mock):
+            with pytest.raises(SystemExit) as exc:
+                cmd_convert_to_onnx(self._args("model.gguf"))
+        assert exc.value.code == 1
+        assert "ERROR" in capsys.readouterr().err
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# cli.cmd_convert_to_gguf
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestCmdConvertToGguf:
+    def _args(self, input_path, output=None):
+        return argparse.Namespace(input_path=input_path, output=output)
+
+    def test_success_prints_result(self, capsys, tmp_path):
+        from llmforge.cli import cmd_convert_to_gguf
+        mock = _mock_llmforge()
+        out_path = str(tmp_path / "model.gguf")
+        mock.convert_onnx_to_gguf.return_value = out_path
+        with _patch_native(mock):
+            cmd_convert_to_gguf(self._args(str(tmp_path / "model.onnx")))
+        out = capsys.readouterr().out
+        assert "LLMForge Conversion Result" in out
+        assert "model.gguf" in out
+
+    def test_default_output_derived_from_input(self, capsys, tmp_path):
+        from llmforge.cli import cmd_convert_to_gguf
+        mock = _mock_llmforge()
+        input_path = str(tmp_path / "model.onnx")
+        expected_out = str(tmp_path / "model.gguf")
+        mock.convert_onnx_to_gguf.return_value = expected_out
+        with _patch_native(mock):
+            cmd_convert_to_gguf(self._args(input_path))
+        mock.convert_onnx_to_gguf.assert_called_once_with(input_path, expected_out)
+
+    def test_explicit_output_passed_through(self, capsys, tmp_path):
+        from llmforge.cli import cmd_convert_to_gguf
+        mock = _mock_llmforge()
+        out_path = "/custom/output.gguf"
+        mock.convert_onnx_to_gguf.return_value = out_path
+        with _patch_native(mock):
+            cmd_convert_to_gguf(self._args("model.onnx", output=out_path))
+        mock.convert_onnx_to_gguf.assert_called_once_with("model.onnx", out_path)
+
+    def test_runtime_error_exits_1(self, capsys):
+        from llmforge.cli import cmd_convert_to_gguf
+        mock = _mock_llmforge()
+        mock.convert_onnx_to_gguf.side_effect = RuntimeError("onnx not installed")
+        with _patch_native(mock):
+            with pytest.raises(SystemExit) as exc:
+                cmd_convert_to_gguf(self._args("model.onnx"))
+        assert exc.value.code == 1
+        assert "ERROR" in capsys.readouterr().err
