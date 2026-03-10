@@ -277,7 +277,7 @@ pub fn parse_gguf(path: &Path) -> Result<ModelIR> {
     }
 
     let version = read_u32_le(&mut r).context("read GGUF version")?;
-    if version < 1 || version > 3 {
+    if !(1..=3).contains(&version) {
         bail!("unsupported GGUF version {version}; expected 1–3");
     }
 
@@ -728,7 +728,7 @@ mod tests {
             let mut buf = Vec::new();
             GgufBuilder::write_gguf_string_buf(&mut buf, "misc.f32");
             GgufBuilder::write_u32_le_buf(&mut buf, GgufValueType::Float32 as u32);
-            GgufBuilder::write_f32_le_buf(&mut buf, 3.14f32);
+            GgufBuilder::write_f32_le_buf(&mut buf, std::f32::consts::PI);
             builder.kvs.push(buf);
         }
         {
@@ -749,7 +749,7 @@ mod tests {
             let mut buf = Vec::new();
             GgufBuilder::write_gguf_string_buf(&mut buf, "misc.f64");
             GgufBuilder::write_u32_le_buf(&mut buf, GgufValueType::Float64 as u32);
-            GgufBuilder::write_f64_le_buf(&mut buf, 2.718f64);
+            GgufBuilder::write_f64_le_buf(&mut buf, std::f64::consts::E);
             builder.kvs.push(buf);
         }
         // Now add the target key after all the scalar skips.
