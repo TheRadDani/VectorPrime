@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/vectorprime/"><img src="https://img.shields.io/pypi/v/vectorprime?style=flat-square&color=blue" alt="PyPI version"></a>
-  <a href="https://pypi.org/project/vectorprime/"><img src="https://img.shields.io/pypi/pyversions/vectorprime?style=flat-square" alt="Python versions"></a>
-  <a href="https://pypi.org/project/vectorprime/"><img src="https://img.shields.io/pypi/dm/vectorprime?style=flat-square&color=green" alt="Monthly downloads"></a>
+  <a href="https://test.pypi.org/project/vectorprime/"><img src="https://img.shields.io/pypi/v/vectorprime?style=flat-square&color=blue" alt="PyPI version"></a>
+  <a href="https://test.pypi.org/project/vectorprime/"><img src="https://img.shields.io/pypi/pyversions/vectorprime?style=flat-square" alt="Python versions"></a>
+  <a href="https://test.pypi.org/project/vectorprime/"><img src="https://img.shields.io/pypi/dm/vectorprime?style=flat-square&color=green" alt="Monthly downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"></a>
   <a href="https://github.com/TheRadDani/llm-forge/actions"><img src="https://img.shields.io/github/actions/workflow/status/TheRadDani/llm-forge/ci.yml?style=flat-square&label=CI" alt="CI status"></a>
   <a href="https://github.com/TheRadDani/llm-forge/stargazers"><img src="https://img.shields.io/github/stars/TheRadDani/llm-forge?style=flat-square" alt="GitHub stars"></a>
