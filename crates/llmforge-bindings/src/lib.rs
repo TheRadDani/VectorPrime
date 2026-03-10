@@ -9,6 +9,7 @@
 //
 // Crate dependency chain resolved here:
 //   llmforge_hardware  -> profile()
+//   llmforge_model_ir  -> parse_model() / analyze_model()
 //   llmforge_optimizer -> run_optimization()
 //   llmforge_export    -> export_ollama()
 //   llmforge_core      -> shared types (HardwareProfile, OptimizationResult, …)
@@ -22,6 +23,7 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
 use llmforge_core::{HardwareProfile, ModelFormat, ModelInfo, OptimizationResult};
+use llmforge_model_ir::parse_model;
 use llmforge_runtime::{gguf_to_onnx, onnx_to_gguf};
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -260,10 +262,15 @@ fn optimize(
     let fmt = parse_model_format(format)?;
     let path = PathBuf::from(model_path);
 
+    // Attempt IR analysis to populate param_count for smarter candidate generation.
+    // Errors are recovered gracefully — a parse failure must never abort optimize().
+    let model_ir = parse_model(&path).ok();
+    let param_count = model_ir.as_ref().and_then(|ir| ir.param_count);
+
     let model = ModelInfo {
         path: path.clone(),
         format: fmt,
-        param_count: None,
+        param_count,
     };
 
     // Auto-detect host hardware, then apply the optional GPU override.
@@ -373,6 +380,53 @@ fn export_ollama(result: &PyOptimizationResult, output_dir: &str) -> PyResult<St
         .map_err(|e| PyRuntimeError::new_err(format!("failed to serialize export manifest: {e}")))
 }
 
+/// Inspect a model file and return its IR metadata as a Python dictionary.
+///
+/// Reads only the file header and metadata section; tensor data is never
+/// loaded.  All fields except `format` may be `None` when the metadata is
+/// absent or uncomputable.
+///
+/// Parameters
+/// ----------
+/// model_path : str
+///     Path to the model file (`.gguf` or `.onnx`).
+///
+/// Returns
+/// -------
+/// dict
+///     A dictionary with the following keys:
+///
+///     - ``format`` (`str`): ``"gguf"`` or ``"onnx"``
+///     - ``param_count`` (`int | None`): total parameter count, if known
+///     - ``architecture`` (`str | None`): architecture family (e.g. ``"llama"``)
+///     - ``context_length`` (`int | None`): maximum context length
+///     - ``layer_count`` (`int | None`): number of transformer blocks
+///
+/// Raises
+/// ------
+/// RuntimeError
+///     If the file cannot be opened, has an unrecognised extension, or the
+///     magic bytes are invalid.
+#[pyfunction]
+fn analyze_model(py: Python<'_>, model_path: &str) -> PyResult<PyObject> {
+    let path = std::path::Path::new(model_path);
+
+    let ir = parse_model(path).map_err(to_py_err)?;
+
+    let dict = pyo3::types::PyDict::new(py);
+    let format_str = match ir.format {
+        ModelFormat::GGUF => "gguf",
+        ModelFormat::ONNX => "onnx",
+    };
+    dict.set_item("format", format_str)?;
+    dict.set_item("param_count", ir.param_count)?;
+    dict.set_item("architecture", ir.architecture)?;
+    dict.set_item("context_length", ir.context_length)?;
+    dict.set_item("layer_count", ir.layer_count)?;
+
+    Ok(dict.into())
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Conversion functions
 // ──────────────────────────────────────────────────────────────────────────────
@@ -451,6 +505,7 @@ fn _llmforge(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(profile_hardware, m)?)?;
     m.add_function(wrap_pyfunction!(optimize, m)?)?;
     m.add_function(wrap_pyfunction!(export_ollama, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_model, m)?)?;
     m.add_function(wrap_pyfunction!(convert_gguf_to_onnx, m)?)?;
     m.add_function(wrap_pyfunction!(convert_onnx_to_gguf, m)?)?;
     Ok(())

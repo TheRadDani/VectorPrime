@@ -6,5 +6,6 @@ members = [
   "crates/llmforge-runtime",
   "crates/llmforge-optimizer",
   "crates/llmforge-export",
+  "crates/llmforge-model-ir",
   "crates/llmforge-bindings",
 ]

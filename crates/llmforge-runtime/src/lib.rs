@@ -6,6 +6,13 @@
 //!
 //! It also exposes the [`convert`] module with [`convert::gguf_to_onnx`] and
 //! [`convert::onnx_to_gguf`] for cross-format model conversion.
+//!
+//! # Runtime Priority
+//!
+//! - **Ollama** and **TensorRT** are the primary inference backends.
+//! - **llama.cpp** (`LlamaCppAdapter`) is retained for compatibility but is
+//!   deprioritized; it should not be selected as the default for new deployments.
+//! - **vLLM** is future scope and is not yet implemented.
 
 pub mod convert;
 pub mod dispatch;

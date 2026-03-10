@@ -43,6 +43,15 @@ def _mock_llmforge():
     result.output_path = None
     m.optimize.return_value = result
 
+    # analyze_model returns a dict matching the ModelIR fields
+    m.analyze_model.return_value = {
+        "format": "gguf",
+        "param_count": 7_000_000_000,
+        "architecture": "llama",
+        "context_length": 4096,
+        "layer_count": 32,
+    }
+
     return m
 
 
@@ -633,3 +642,40 @@ class TestCmdConvertToGguf:
                 cmd_convert_to_gguf(self._args("model.onnx"))
         assert exc.value.code == 1
         assert "ERROR" in capsys.readouterr().err
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# analyze_model mock coverage
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAnalyzeModelMocked:
+    """Verify that _mock_llmforge exposes analyze_model and its return dict."""
+
+    def test_analyze_model_attribute_exists(self):
+        """The mock must have an analyze_model attribute (mirrors the native module)."""
+        mock = _mock_llmforge()
+        assert hasattr(mock, "analyze_model"), (
+            "analyze_model missing from _mock_llmforge — update mock when adding new bindings"
+        )
+
+    def test_analyze_model_returns_dict_with_required_keys(self):
+        """The mock return value must contain all ModelIR fields expected by callers."""
+        mock = _mock_llmforge()
+        result = mock.analyze_model("some_path.gguf")
+        required_keys = {"format", "param_count", "architecture", "context_length", "layer_count"}
+        assert required_keys.issubset(result.keys()), (
+            f"analyze_model result missing keys: {required_keys - result.keys()}"
+        )
+
+    def test_analyze_model_format_field(self):
+        """format must be one of the known format strings."""
+        mock = _mock_llmforge()
+        result = mock.analyze_model("model.gguf")
+        assert result["format"] in {"gguf", "onnx"}
+
+    def test_analyze_model_via_native_module(self):
+        """verify analyze_model is reachable as llmforge.analyze_model in a live import."""
+        import llmforge
+        assert hasattr(llmforge, "analyze_model"), (
+            "analyze_model not re-exported from llmforge/__init__.py"
+        )

@@ -4,6 +4,11 @@ tests/fixtures/tiny_onnx/
 tests/fixtures/*.bin
 tests/fixtures/*.pt
 
+## Environment / secrets
+.env
+.env.*
+!.env.example
+
 ## Python
 __pycache__/
 *.pyc
@@ -54,3 +59,8 @@ Thumbs.db
 target/debug/*
 .coverage
 target/
+
+ahma-3b-q4_k_m.gguf.worktrees/
+
+## Root-level large model files (not for committing)
+/ahma-3b-q4_k_m.gguf
