@@ -70,9 +70,7 @@ pub fn parse_model(path: &Path) -> Result<ModelIR> {
     match ext.as_str() {
         "gguf" => parse_gguf(path),
         "onnx" => parse_onnx(path),
-        other => bail!(
-            "unrecognised model file extension '.{other}'; expected '.gguf' or '.onnx'"
-        ),
+        other => bail!("unrecognised model file extension '.{other}'; expected '.gguf' or '.onnx'"),
     }
 }
 
@@ -84,38 +82,38 @@ pub fn parse_model(path: &Path) -> Result<ModelIR> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 enum GgufValueType {
-    Uint8   = 0,
-    Int8    = 1,
-    Uint16  = 2,
-    Int16   = 3,
-    Uint32  = 4,
-    Int32   = 5,
+    Uint8 = 0,
+    Int8 = 1,
+    Uint16 = 2,
+    Int16 = 3,
+    Uint32 = 4,
+    Int32 = 5,
     Float32 = 6,
-    Bool    = 7,
-    String  = 8,
-    Array   = 9,
-    Uint64  = 10,
-    Int64   = 11,
+    Bool = 7,
+    String = 8,
+    Array = 9,
+    Uint64 = 10,
+    Int64 = 11,
     Float64 = 12,
 }
 
 impl GgufValueType {
     fn from_u32(v: u32) -> Option<Self> {
         match v {
-            0  => Some(Self::Uint8),
-            1  => Some(Self::Int8),
-            2  => Some(Self::Uint16),
-            3  => Some(Self::Int16),
-            4  => Some(Self::Uint32),
-            5  => Some(Self::Int32),
-            6  => Some(Self::Float32),
-            7  => Some(Self::Bool),
-            8  => Some(Self::String),
-            9  => Some(Self::Array),
+            0 => Some(Self::Uint8),
+            1 => Some(Self::Int8),
+            2 => Some(Self::Uint16),
+            3 => Some(Self::Int16),
+            4 => Some(Self::Uint32),
+            5 => Some(Self::Int32),
+            6 => Some(Self::Float32),
+            7 => Some(Self::Bool),
+            8 => Some(Self::String),
+            9 => Some(Self::Array),
             10 => Some(Self::Uint64),
             11 => Some(Self::Int64),
             12 => Some(Self::Float64),
-            _  => None,
+            _ => None,
         }
     }
 
@@ -123,10 +121,10 @@ impl GgufValueType {
     fn fixed_size(self) -> Option<u64> {
         match self {
             Self::Uint8 | Self::Int8 | Self::Bool => Some(1),
-            Self::Uint16 | Self::Int16            => Some(2),
+            Self::Uint16 | Self::Int16 => Some(2),
             Self::Uint32 | Self::Int32 | Self::Float32 => Some(4),
             Self::Uint64 | Self::Int64 | Self::Float64 => Some(8),
-            Self::String | Self::Array            => None,
+            Self::String | Self::Array => None,
         }
     }
 }
@@ -219,14 +217,13 @@ fn skip_gguf_value<R: Read + Seek>(r: &mut R, vtype: GgufValueType) -> Result<()
         GgufValueType::Array => {
             // element_type (u32) + element_count (u64)
             let elem_type_raw = read_u32_le(r).context("array element type")?;
-            let elem_count    = read_u64_le(r).context("array element count")?;
+            let elem_count = read_u64_le(r).context("array element count")?;
 
             let elem_type = GgufValueType::from_u32(elem_type_raw)
                 .with_context(|| format!("unknown array element type {elem_type_raw}"))?;
 
             for _ in 0..elem_count {
-                skip_gguf_value(r, elem_type)
-                    .context("skip array element")?;
+                skip_gguf_value(r, elem_type).context("skip array element")?;
             }
         }
         _ => bail!("unhandled GgufValueType in skip_gguf_value"),
@@ -237,14 +234,14 @@ fn skip_gguf_value<R: Read + Seek>(r: &mut R, vtype: GgufValueType) -> Result<()
 /// Read a GGUF value of type UINT32 and return it as `u64`.
 fn read_value_as_u64<R: Read + Seek>(r: &mut R, vtype: GgufValueType) -> Result<u64> {
     match vtype {
-        GgufValueType::Uint8  => Ok(read_u8(r).context("read uint8 value")? as u64),
+        GgufValueType::Uint8 => Ok(read_u8(r).context("read uint8 value")? as u64),
         GgufValueType::Uint16 => Ok(read_u16_le(r).context("read uint16 value")? as u64),
         GgufValueType::Uint32 => Ok(read_u32_le(r).context("read uint32 value")? as u64),
         GgufValueType::Uint64 => Ok(read_u64_le(r).context("read uint64 value")?),
-        GgufValueType::Int8   => Ok(read_u8(r).context("read int8 value (reinterp)")? as u64),
-        GgufValueType::Int16  => Ok(read_i16_le(r).context("read int16 value (reinterp)")? as u64),
-        GgufValueType::Int32  => Ok(read_i32_le(r).context("read int32 value (reinterp)")? as u64),
-        GgufValueType::Int64  => Ok(read_i64_le(r).context("read int64 value (reinterp)")? as u64),
+        GgufValueType::Int8 => Ok(read_u8(r).context("read int8 value (reinterp)")? as u64),
+        GgufValueType::Int16 => Ok(read_i16_le(r).context("read int16 value (reinterp)")? as u64),
+        GgufValueType::Int32 => Ok(read_i32_le(r).context("read int32 value (reinterp)")? as u64),
+        GgufValueType::Int64 => Ok(read_i64_le(r).context("read int64 value (reinterp)")? as u64),
         _ => bail!("cannot coerce value type {:?} to u64", vtype),
     }
 }
@@ -267,8 +264,8 @@ fn read_value_as_u32<R: Read + Seek>(r: &mut R, vtype: GgufValueType) -> Result<
 /// failures.  Missing or unknown KV keys leave the corresponding IR fields as
 /// `None` — they are not errors.
 pub fn parse_gguf(path: &Path) -> Result<ModelIR> {
-    let file = std::fs::File::open(path)
-        .with_context(|| format!("open GGUF file: {}", path.display()))?;
+    let file =
+        std::fs::File::open(path).with_context(|| format!("open GGUF file: {}", path.display()))?;
     let mut r = io::BufReader::new(file);
 
     // ── Header ────────────────────────────────────────────────────────────────
@@ -285,15 +282,15 @@ pub fn parse_gguf(path: &Path) -> Result<ModelIR> {
     }
 
     let _tensor_count = read_u64_le(&mut r).context("read tensor_count")?;
-    let kv_count      = read_u64_le(&mut r).context("read kv_count")?;
+    let kv_count = read_u64_le(&mut r).context("read kv_count")?;
 
     // ── KV section ────────────────────────────────────────────────────────────
     // Keys we are interested in.
-    let mut general_param_count: Option<u64>   = None;
+    let mut general_param_count: Option<u64> = None;
     let mut general_architecture: Option<String> = None;
     // Architecture-specific keys; filled once we know the arch name.
-    let mut block_count: Option<u64>     = None;
-    let mut context_length: Option<u64>  = None;
+    let mut block_count: Option<u64> = None;
+    let mut context_length: Option<u64> = None;
     let mut embedding_length: Option<u64> = None;
 
     for _ in 0..kv_count {
@@ -306,17 +303,15 @@ pub fn parse_gguf(path: &Path) -> Result<ModelIR> {
         // Decide whether to capture or skip this key's value.
         match key.as_str() {
             "general.parameter_count" => {
-                general_param_count = Some(
-                    read_value_as_u64(&mut r, vtype)
-                        .with_context(|| format!("read general.parameter_count (type={vtype:?})"))?,
-                );
+                general_param_count =
+                    Some(read_value_as_u64(&mut r, vtype).with_context(|| {
+                        format!("read general.parameter_count (type={vtype:?})")
+                    })?);
             }
             "general.architecture" => {
                 if vtype == GgufValueType::String {
-                    general_architecture = Some(
-                        read_gguf_string(&mut r)
-                            .context("read general.architecture value")?,
-                    );
+                    general_architecture =
+                        Some(read_gguf_string(&mut r).context("read general.architecture value")?);
                 } else {
                     skip_gguf_value(&mut r, vtype)
                         .context("skip general.architecture (unexpected type)")?;
@@ -362,17 +357,17 @@ pub fn parse_gguf(path: &Path) -> Result<ModelIR> {
     // transformer estimate: 12 * block_count * embedding_length.
     // `saturating_mul` prevents silent integer overflow.
     let param_count = general_param_count.or_else(|| {
-        let blocks    = block_count?;
+        let blocks = block_count?;
         let embed_len = embedding_length?;
         Some(12u64.saturating_mul(blocks).saturating_mul(embed_len))
     });
 
     Ok(ModelIR {
-        format:         ModelFormat::GGUF,
+        format: ModelFormat::GGUF,
         param_count,
-        architecture:   general_architecture,
+        architecture: general_architecture,
         context_length: context_length.map(|v| v as u32),
-        layer_count:    block_count.map(|v| v as u32),
+        layer_count: block_count.map(|v| v as u32),
     })
 }
 
@@ -395,11 +390,11 @@ pub fn parse_gguf(path: &Path) -> Result<ModelIR> {
 pub fn parse_onnx(path: &Path) -> Result<ModelIR> {
     use protobuf::Message;
 
-    let bytes = std::fs::read(path)
-        .with_context(|| format!("read ONNX file: {}", path.display()))?;
+    let bytes =
+        std::fs::read(path).with_context(|| format!("read ONNX file: {}", path.display()))?;
 
-    let model = onnx_protobuf::ModelProto::parse_from_bytes(&bytes)
-        .context("decode ONNX protobuf")?;
+    let model =
+        onnx_protobuf::ModelProto::parse_from_bytes(&bytes).context("decode ONNX protobuf")?;
 
     let graph = model.graph.as_ref();
 
@@ -427,9 +422,9 @@ pub fn parse_onnx(path: &Path) -> Result<ModelIR> {
         .map(|n| n as u32);
 
     Ok(ModelIR {
-        format:         ModelFormat::ONNX,
+        format: ModelFormat::ONNX,
         param_count,
-        architecture:   None, // ONNX graphs carry no named architecture field
+        architecture: None, // ONNX graphs carry no named architecture field
         context_length: None,
         layer_count,
     })
@@ -593,7 +588,10 @@ mod tests {
         let result = parse_gguf(tmp.path());
         assert!(result.is_err(), "expected error for bad magic");
         let msg = format!("{:#}", result.unwrap_err());
-        assert!(msg.contains("bad magic"), "error should mention bad magic, got: {msg}");
+        assert!(
+            msg.contains("bad magic"),
+            "error should mention bad magic, got: {msg}"
+        );
     }
 
     #[test]
@@ -820,10 +818,7 @@ mod tests {
     #[test]
     fn parse_model_dispatches_by_extension() {
         // .gguf extension → parse_gguf (wrong magic → error)
-        let mut tmp_gguf = tempfile::Builder::new()
-            .suffix(".gguf")
-            .tempfile()
-            .unwrap();
+        let mut tmp_gguf = tempfile::Builder::new().suffix(".gguf").tempfile().unwrap();
         tmp_gguf.write_all(b"JUNK").unwrap();
         let result = parse_model(tmp_gguf.path());
         assert!(result.is_err());
@@ -831,17 +826,11 @@ mod tests {
         assert!(msg.contains("bad magic") || msg.contains("GGUF"));
 
         // .onnx extension → parse_onnx (does not panic)
-        let tmp_onnx = tempfile::Builder::new()
-            .suffix(".onnx")
-            .tempfile()
-            .unwrap();
+        let tmp_onnx = tempfile::Builder::new().suffix(".onnx").tempfile().unwrap();
         let _result = parse_model(tmp_onnx.path()); // may succeed or fail, no panic
 
         // Unknown extension → error
-        let tmp_unknown = tempfile::Builder::new()
-            .suffix(".xyz")
-            .tempfile()
-            .unwrap();
+        let tmp_unknown = tempfile::Builder::new().suffix(".xyz").tempfile().unwrap();
         let result = parse_model(tmp_unknown.path());
         assert!(result.is_err());
         let msg = format!("{:#}", result.unwrap_err());
