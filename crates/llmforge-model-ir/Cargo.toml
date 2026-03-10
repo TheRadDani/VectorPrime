@@ -9,7 +9,7 @@ llmforge-core = { path = "../llmforge-core" }
 anyhow = "1"
 # onnx-protobuf 0.2.3 requires protobuf pinned to =3.4.0
 onnx-protobuf = "0.2.3"
-protobuf = "=3.4.0"
+protobuf = "=3.7.2"
 
 [dev-dependencies]
 tempfile = "3"
