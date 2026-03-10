@@ -10,7 +10,8 @@ license = { file = "LICENSE" }
 
 dependencies = [
     "numpy",
-    "gguf"
+    "gguf",
+    "onnx"
 ]
 
 [project.scripts]
