@@ -21,3 +21,4 @@ llmforge = "llmforge.cli:main"
 python-source = "python"
 module-name = "llmforge._llmforge"
 manifest-path = "crates/llmforge-bindings/Cargo.toml"
+
