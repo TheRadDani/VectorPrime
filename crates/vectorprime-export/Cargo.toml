@@ -1,0 +1,13 @@
+[package]
+name = "vectorprime-export"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vectorprime-core = { path = "../vectorprime-core" }
+anyhow = "1"
+serde_json = "1"
+which = "4"
+
+[dev-dependencies]
+tempfile = "3"

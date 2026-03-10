@@ -204,90 +204,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
-name = "llmforge-bindings"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "llmforge-core",
- "llmforge-export",
- "llmforge-hardware",
- "llmforge-model-ir",
- "llmforge-optimizer",
- "llmforge-runtime",
- "pyo3",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "llmforge-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "llmforge-export"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "llmforge-core",
- "serde_json",
- "tempfile",
- "which",
-]
-
-[[package]]
-name = "llmforge-hardware"
-version = "0.1.0"
-dependencies = [
- "llmforge-core",
- "num_cpus",
- "raw-cpuid",
- "serde_json",
- "sysinfo",
-]
-
-[[package]]
-name = "llmforge-model-ir"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "llmforge-core",
- "onnx-protobuf",
- "protobuf",
- "tempfile",
-]
-
-[[package]]
-name = "llmforge-optimizer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "llmforge-core",
- "llmforge-hardware",
- "llmforge-runtime",
- "tokio",
-]
-
-[[package]]
-name = "llmforge-runtime"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "llmforge-core",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "which",
-]
-
-[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -775,6 +691,90 @@ name = "unindent"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7264e107f553ccae879d21fbea1d6724ac785e8c3bfc762137959b5802826ef3"
+
+[[package]]
+name = "vectorprime-bindings"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "pyo3",
+ "serde_json",
+ "tokio",
+ "vectorprime-core",
+ "vectorprime-export",
+ "vectorprime-hardware",
+ "vectorprime-model-ir",
+ "vectorprime-optimizer",
+ "vectorprime-runtime",
+]
+
+[[package]]
+name = "vectorprime-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "vectorprime-export"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "tempfile",
+ "vectorprime-core",
+ "which",
+]
+
+[[package]]
+name = "vectorprime-hardware"
+version = "0.1.0"
+dependencies = [
+ "num_cpus",
+ "raw-cpuid",
+ "serde_json",
+ "sysinfo",
+ "vectorprime-core",
+]
+
+[[package]]
+name = "vectorprime-model-ir"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "onnx-protobuf",
+ "protobuf",
+ "tempfile",
+ "vectorprime-core",
+]
+
+[[package]]
+name = "vectorprime-optimizer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tokio",
+ "vectorprime-core",
+ "vectorprime-hardware",
+ "vectorprime-runtime",
+]
+
+[[package]]
+name = "vectorprime-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "vectorprime-core",
+ "which",
+]
 
 [[package]]
 name = "wasi"

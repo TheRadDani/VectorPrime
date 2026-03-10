@@ -1,5 +1,5 @@
 """
-Integration tests for llmforge.analyze_model() Python binding.
+Integration tests for vectorprime.analyze_model() Python binding.
 
 Tests verify that the PyO3 `analyze_model` function correctly:
   - Returns a dict with all required ModelIR keys
@@ -22,9 +22,9 @@ import pytest
 # ─── module-level guard ───────────────────────────────────────────────────────
 # Skip the entire file if the native extension is not compiled.
 # This keeps CI green without requiring `maturin develop` to have been run.
-llmforge = pytest.importorskip(
-    "llmforge._llmforge",
-    reason="llmforge native extension not compiled — run `maturin develop`",
+vectorprime = pytest.importorskip(
+    "vectorprime._vectorprime",
+    reason="vectorprime native extension not compiled — run `maturin develop`",
 )
 
 # ─── real fixture paths (optional) ───────────────────────────────────────────
@@ -192,7 +192,7 @@ class TestAnalyzeModelDictStructure:
     def test_gguf_returns_all_required_keys(self, tmp_path):
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model)
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert isinstance(result, dict)
         assert REQUIRED_KEYS.issubset(result.keys()), (
             f"analyze_model missing keys: {REQUIRED_KEYS - result.keys()}"
@@ -202,7 +202,7 @@ class TestAnalyzeModelDictStructure:
         """No unexpected extra keys should appear in the dict."""
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model)
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert set(result.keys()) == REQUIRED_KEYS, (
             f"Unexpected keys: {set(result.keys()) - REQUIRED_KEYS}"
         )
@@ -210,7 +210,7 @@ class TestAnalyzeModelDictStructure:
     def test_onnx_returns_all_required_keys(self, tmp_path):
         model = tmp_path / "model.onnx"
         model.write_bytes(_make_minimal_onnx_bytes())
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert isinstance(result, dict)
         assert REQUIRED_KEYS.issubset(result.keys()), (
             f"analyze_model missing keys: {REQUIRED_KEYS - result.keys()}"
@@ -227,19 +227,19 @@ class TestAnalyzeModelFormatField:
     def test_gguf_format_is_gguf(self, tmp_path):
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model)
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["format"] == "gguf"
 
     def test_onnx_format_is_onnx(self, tmp_path):
         model = tmp_path / "model.onnx"
         model.write_bytes(_make_minimal_onnx_bytes())
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["format"] == "onnx"
 
     def test_format_is_string(self, tmp_path):
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model)
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert isinstance(result["format"], str)
 
 
@@ -253,25 +253,25 @@ class TestAnalyzeModelFieldTypes:
     def test_param_count_is_int_or_none(self, tmp_path):
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model)
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["param_count"] is None or isinstance(result["param_count"], int)
 
     def test_architecture_is_str_or_none(self, tmp_path):
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model)
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["architecture"] is None or isinstance(result["architecture"], str)
 
     def test_context_length_is_int_or_none(self, tmp_path):
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model)
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["context_length"] is None or isinstance(result["context_length"], int)
 
     def test_layer_count_is_int_or_none(self, tmp_path):
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model)
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["layer_count"] is None or isinstance(result["layer_count"], int)
 
 
@@ -285,25 +285,25 @@ class TestAnalyzeModelGgufMetadata:
     def test_architecture_extracted_correctly(self, tmp_path):
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model, architecture="mistral")
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["architecture"] == "mistral"
 
     def test_layer_count_extracted_from_block_count(self, tmp_path):
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model, architecture="phi", block_count=24, embedding_length=2048)
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["layer_count"] == 24
 
     def test_context_length_extracted(self, tmp_path):
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model, context_length=8192)
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["context_length"] == 8192
 
     def test_explicit_param_count_used_when_present(self, tmp_path):
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model, param_count=7_000_000_000)
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["param_count"] == 7_000_000_000
 
     def test_param_count_fallback_computed_from_arch_keys(self, tmp_path):
@@ -317,7 +317,7 @@ class TestAnalyzeModelGgufMetadata:
             embedding_length=4096,
             param_count=None,
         )
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         expected = 12 * 32 * 4096
         assert result["param_count"] == expected, (
             f"Expected fallback param_count={expected}, got {result['param_count']}"
@@ -327,7 +327,7 @@ class TestAnalyzeModelGgufMetadata:
         """Empty GGUF header — no parameter metadata available."""
         model = tmp_path / "model.gguf"
         model.write_bytes(_make_gguf_bytes())  # no KV entries at all
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["param_count"] is None
         assert result["architecture"] is None
         assert result["context_length"] is None
@@ -343,31 +343,31 @@ class TestAnalyzeModelErrors:
 
     def test_nonexistent_path_raises_runtime_error(self):
         with pytest.raises(RuntimeError):
-            llmforge.analyze_model("/nonexistent/path/that/does/not/exist.gguf")
+            vectorprime.analyze_model("/nonexistent/path/that/does/not/exist.gguf")
 
     def test_unrecognised_extension_raises_runtime_error(self, tmp_path):
         bad = tmp_path / "model.safetensors"
         bad.write_bytes(b"dummy")
         with pytest.raises(RuntimeError):
-            llmforge.analyze_model(str(bad))
+            vectorprime.analyze_model(str(bad))
 
     def test_bad_gguf_magic_raises_runtime_error(self, tmp_path):
         bad = tmp_path / "corrupt.gguf"
         bad.write_bytes(b"NOTG\x00\x00\x00\x00" * 4)
         with pytest.raises(RuntimeError):
-            llmforge.analyze_model(str(bad))
+            vectorprime.analyze_model(str(bad))
 
     def test_empty_gguf_raises_runtime_error(self, tmp_path):
         """An empty file with .gguf extension has no magic — must fail."""
         empty = tmp_path / "empty.gguf"
         empty.write_bytes(b"")
         with pytest.raises(RuntimeError):
-            llmforge.analyze_model(str(empty))
+            vectorprime.analyze_model(str(empty))
 
     def test_error_message_is_string(self):
         """The RuntimeError message should be a non-empty string."""
         try:
-            llmforge.analyze_model("/no/such/model.gguf")
+            vectorprime.analyze_model("/no/such/model.gguf")
         except RuntimeError as exc:
             assert str(exc), "RuntimeError message should not be empty"
 
@@ -383,21 +383,21 @@ class TestAnalyzeModelOnnx:
         """ONNX graphs carry no named architecture field — must be None."""
         model = tmp_path / "model.onnx"
         model.write_bytes(_make_minimal_onnx_bytes())
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["architecture"] is None
 
     def test_onnx_context_length_is_none(self, tmp_path):
         """ONNX format does not encode context_length — must be None."""
         model = tmp_path / "model.onnx"
         model.write_bytes(_make_minimal_onnx_bytes())
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["context_length"] is None
 
     def test_onnx_param_count_is_none_for_empty_graph(self, tmp_path):
         """An ONNX with no initializers yields param_count=None."""
         model = tmp_path / "model.onnx"
         model.write_bytes(_make_minimal_onnx_bytes())
-        result = llmforge.analyze_model(str(model))
+        result = vectorprime.analyze_model(str(model))
         assert result["param_count"] is None
 
 
@@ -416,19 +416,19 @@ class TestAnalyzeModelRealGgufFixture:
     """Tests that run only when tests/fixtures/tiny.gguf has been downloaded."""
 
     def test_real_gguf_returns_all_keys(self):
-        result = llmforge.analyze_model(_GGUF_FIXTURE)
+        result = vectorprime.analyze_model(_GGUF_FIXTURE)
         assert REQUIRED_KEYS.issubset(result.keys())
 
     def test_real_gguf_format_is_gguf(self):
-        result = llmforge.analyze_model(_GGUF_FIXTURE)
+        result = vectorprime.analyze_model(_GGUF_FIXTURE)
         assert result["format"] == "gguf"
 
     def test_real_gguf_param_count_is_int_or_none(self):
-        result = llmforge.analyze_model(_GGUF_FIXTURE)
+        result = vectorprime.analyze_model(_GGUF_FIXTURE)
         assert result["param_count"] is None or isinstance(result["param_count"], int)
 
     def test_real_gguf_architecture_is_str_or_none(self):
-        result = llmforge.analyze_model(_GGUF_FIXTURE)
+        result = vectorprime.analyze_model(_GGUF_FIXTURE)
         assert result["architecture"] is None or isinstance(result["architecture"], str)
 
 
@@ -443,41 +443,41 @@ class TestAnalyzeModelRealOnnxFixture:
     """Tests that run only when tests/fixtures/tiny_onnx/model.onnx exists."""
 
     def test_real_onnx_returns_all_keys(self):
-        result = llmforge.analyze_model(_ONNX_FIXTURE)
+        result = vectorprime.analyze_model(_ONNX_FIXTURE)
         assert REQUIRED_KEYS.issubset(result.keys())
 
     def test_real_onnx_format_is_onnx(self):
-        result = llmforge.analyze_model(_ONNX_FIXTURE)
+        result = vectorprime.analyze_model(_ONNX_FIXTURE)
         assert result["format"] == "onnx"
 
     def test_real_onnx_param_count_positive_when_present(self):
-        result = llmforge.analyze_model(_ONNX_FIXTURE)
+        result = vectorprime.analyze_model(_ONNX_FIXTURE)
         if result["param_count"] is not None:
             assert result["param_count"] > 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Tests: integration via llmforge package import
+# Tests: integration via vectorprime package import
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestAnalyzeModelViaPackage:
-    """Verify analyze_model is accessible via the top-level llmforge package."""
+    """Verify analyze_model is accessible via the top-level vectorprime package."""
 
-    def test_callable_from_llmforge_package(self):
-        import llmforge as pkg
+    def test_callable_from_vectorprime_package(self):
+        import vectorprime as pkg
         assert hasattr(pkg, "analyze_model"), (
-            "analyze_model not re-exported from llmforge/__init__.py"
+            "analyze_model not re-exported from vectorprime/__init__.py"
         )
         assert callable(pkg.analyze_model)
 
     def test_package_and_module_same_function(self, tmp_path):
-        """llmforge.analyze_model and llmforge._llmforge.analyze_model must agree."""
-        import llmforge as pkg
+        """vectorprime.analyze_model and vectorprime._vectorprime.analyze_model must agree."""
+        import vectorprime as pkg
 
         model = tmp_path / "model.gguf"
         _write_synthetic_gguf(model)
 
         result_pkg = pkg.analyze_model(str(model))
-        result_mod = llmforge.analyze_model(str(model))
+        result_mod = vectorprime.analyze_model(str(model))
 
         assert result_pkg == result_mod

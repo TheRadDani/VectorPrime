@@ -1,5 +1,5 @@
 """
-Shared pytest fixtures and configuration for all llmforge tests.
+Shared pytest fixtures and configuration for all vectorprime tests.
 """
 
 import os
@@ -50,16 +50,16 @@ def onnx_model_path():
 
 
 @pytest.fixture(scope="session")
-def llmforge():
-    """Import and return the llmforge module (requires maturin develop)."""
+def vectorprime():
+    """Import and return the vectorprime module (requires maturin develop)."""
     try:
-        import llmforge as lf
+        import vectorprime as lf
         return lf
     except ImportError:
-        pytest.skip("llmforge bindings not compiled. Run: maturin develop")
+        pytest.skip("vectorprime bindings not compiled. Run: maturin develop")
 
 
 @pytest.fixture(scope="session")
-def hardware_profile(llmforge):
+def hardware_profile(vectorprime):
     """Hardware profile detected once per test session."""
-    return llmforge.profile_hardware()
+    return vectorprime.profile_hardware()

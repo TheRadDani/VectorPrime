@@ -1,0 +1,11 @@
+[package]
+name = "vectorprime-optimizer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vectorprime-core = { path = "../vectorprime-core" }
+vectorprime-hardware = { path = "../vectorprime-hardware" }
+vectorprime-runtime = { path = "../vectorprime-runtime" }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"

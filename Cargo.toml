@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/llmforge-core",
-  "crates/llmforge-hardware",
-  "crates/llmforge-runtime",
-  "crates/llmforge-optimizer",
-  "crates/llmforge-export",
-  "crates/llmforge-model-ir",
-  "crates/llmforge-bindings",
+  "crates/vectorprime-core",
+  "crates/vectorprime-hardware",
+  "crates/vectorprime-runtime",
+  "crates/vectorprime-optimizer",
+  "crates/vectorprime-export",
+  "crates/vectorprime-model-ir",
+  "crates/vectorprime-bindings",
 ]

@@ -19,7 +19,7 @@ skip_no_fixtures = pytest.mark.skipif(
 
 def _run(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["llmforge", *args],
+        ["vectorprime", *args],
         capture_output=True,
         text=True,
     )

@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-_llmforge = pytest.importorskip(
-    "llmforge._llmforge",
+_vectorprime = pytest.importorskip(
+    "vectorprime._vectorprime",
     reason="Native extension not compiled — run: maturin develop",
 )
 
@@ -37,13 +37,13 @@ import shutil as _shutil
 def test_optimize_missing_file():
     """optimize() must raise RuntimeError for non-existent paths when llama-cli is present."""
     with pytest.raises(RuntimeError):
-        _llmforge.optimize("/nonexistent/path/model.gguf", "gguf")
+        _vectorprime.optimize("/nonexistent/path/model.gguf", "gguf")
 
 
 def test_optimize_bad_format():
     """Unknown format strings must raise RuntimeError."""
     with pytest.raises(RuntimeError):
-        _llmforge.optimize("/some/model.xyz", "xyz")
+        _vectorprime.optimize("/some/model.xyz", "xyz")
 
 
 # ── fixture-dependent tests ───────────────────────────────────────────────────
@@ -52,20 +52,20 @@ def test_optimize_bad_format():
 @skip_no_fixtures
 def test_optimize_gguf():
     """GGUF optimization selects LlamaCpp as the runtime."""
-    result = _llmforge.optimize(_GGUF, "gguf")
+    result = _vectorprime.optimize(_GGUF, "gguf")
     assert result.runtime == "LlamaCpp"
 
 
 @skip_no_fixtures
 def test_optimize_gguf_throughput_positive():
-    result = _llmforge.optimize(_GGUF, "gguf")
+    result = _vectorprime.optimize(_GGUF, "gguf")
     assert result.tokens_per_sec > 0
 
 
 @skip_no_fixtures
 def test_optimize_onnx():
     """ONNX optimization returns a result with positive throughput."""
-    result = _llmforge.optimize(_ONNX, "onnx")
+    result = _vectorprime.optimize(_ONNX, "onnx")
     assert result.tokens_per_sec > 0
 
 
@@ -73,5 +73,5 @@ def test_optimize_onnx():
 @requires_gpu
 def test_optimize_gguf_gpu_layers_nonzero():
     """When a GPU is present, at least one layer should be offloaded."""
-    result = _llmforge.optimize(_GGUF, "gguf")
+    result = _vectorprime.optimize(_GGUF, "gguf")
     assert result.gpu_layers > 0

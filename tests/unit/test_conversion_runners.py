@@ -30,7 +30,7 @@ def _absent(module_name: str):
 
 class TestGgufToOnnxError:
     def test_writes_json_error_and_exits(self, capsys):
-        from llmforge.gguf_to_onnx_runner import _error
+        from vectorprime.gguf_to_onnx_runner import _error
         with pytest.raises(SystemExit) as exc:
             _error("test error message")
         assert exc.value.code == 1
@@ -45,7 +45,7 @@ class TestGgufToOnnxError:
 class TestGgufToOnnxCheckImports:
     def test_missing_gguf_exits(self, capsys):
         with _absent("gguf"):
-            from llmforge import gguf_to_onnx_runner
+            from vectorprime import gguf_to_onnx_runner
             with pytest.raises(SystemExit) as exc:
                 gguf_to_onnx_runner._check_imports()
         assert exc.value.code != 0
@@ -53,14 +53,14 @@ class TestGgufToOnnxCheckImports:
 
     def test_missing_onnx_exits(self, capsys):
         with _absent("onnx"):
-            from llmforge import gguf_to_onnx_runner
+            from vectorprime import gguf_to_onnx_runner
             with pytest.raises(SystemExit) as exc:
                 gguf_to_onnx_runner._check_imports()
         assert exc.value.code != 0
 
     def test_missing_numpy_exits(self, capsys):
         with _absent("numpy"):
-            from llmforge import gguf_to_onnx_runner
+            from vectorprime import gguf_to_onnx_runner
             with pytest.raises(SystemExit) as exc:
                 gguf_to_onnx_runner._check_imports()
         assert exc.value.code != 0
@@ -72,32 +72,32 @@ class TestGgufToOnnxCheckImports:
 
 class TestGgufValueToSerialisable:
     def test_int(self):
-        from llmforge.gguf_to_onnx_runner import _gguf_value_to_serialisable
+        from vectorprime.gguf_to_onnx_runner import _gguf_value_to_serialisable
         assert _gguf_value_to_serialisable(42) == 42
 
     def test_float(self):
-        from llmforge.gguf_to_onnx_runner import _gguf_value_to_serialisable
+        from vectorprime.gguf_to_onnx_runner import _gguf_value_to_serialisable
         assert _gguf_value_to_serialisable(3.14) == pytest.approx(3.14)
 
     def test_bool(self):
-        from llmforge.gguf_to_onnx_runner import _gguf_value_to_serialisable
+        from vectorprime.gguf_to_onnx_runner import _gguf_value_to_serialisable
         assert _gguf_value_to_serialisable(True) is True
 
     def test_string(self):
-        from llmforge.gguf_to_onnx_runner import _gguf_value_to_serialisable
+        from vectorprime.gguf_to_onnx_runner import _gguf_value_to_serialisable
         assert _gguf_value_to_serialisable("hello") == "hello"
 
     def test_bytes_decoded(self):
-        from llmforge.gguf_to_onnx_runner import _gguf_value_to_serialisable
+        from vectorprime.gguf_to_onnx_runner import _gguf_value_to_serialisable
         assert _gguf_value_to_serialisable(b"world") == "world"
 
     def test_list_recursed(self):
-        from llmforge.gguf_to_onnx_runner import _gguf_value_to_serialisable
+        from vectorprime.gguf_to_onnx_runner import _gguf_value_to_serialisable
         result = _gguf_value_to_serialisable([1, "a", b"b"])
         assert result == [1, "a", "b"]
 
     def test_unknown_type_stringified(self):
-        from llmforge.gguf_to_onnx_runner import _gguf_value_to_serialisable
+        from vectorprime.gguf_to_onnx_runner import _gguf_value_to_serialisable
         class Weird:
             def __str__(self): return "weird"
         assert _gguf_value_to_serialisable(Weird()) == "weird"
@@ -145,7 +145,7 @@ class TestGgufToOnnxRun:
         return mock_gguf, mock_onnx, np
 
     def test_success_outputs_json(self, capsys, tmp_path):
-        from llmforge import gguf_to_onnx_runner
+        from vectorprime import gguf_to_onnx_runner
         mock_gguf, mock_onnx, np = self._make_mocks()
         out_path = str(tmp_path / "model.onnx")
         with patch.dict(sys.modules, {"gguf": mock_gguf, "onnx": mock_onnx, "numpy": np}):
@@ -157,21 +157,21 @@ class TestGgufToOnnxRun:
         assert payload["output_path"] == out_path
 
     def test_missing_input_path_exits(self, capsys):
-        from llmforge import gguf_to_onnx_runner
+        from vectorprime import gguf_to_onnx_runner
         mock_gguf, mock_onnx, np = self._make_mocks()
         with patch.dict(sys.modules, {"gguf": mock_gguf, "onnx": mock_onnx, "numpy": np}):
             with pytest.raises(SystemExit):
                 gguf_to_onnx_runner._run({"output_path": "out.onnx"})
 
     def test_missing_output_path_exits(self, capsys):
-        from llmforge import gguf_to_onnx_runner
+        from vectorprime import gguf_to_onnx_runner
         mock_gguf, mock_onnx, np = self._make_mocks()
         with patch.dict(sys.modules, {"gguf": mock_gguf, "onnx": mock_onnx, "numpy": np}):
             with pytest.raises(SystemExit):
                 gguf_to_onnx_runner._run({"input_path": "model.gguf"})
 
     def test_gguf_open_failure_exits(self, capsys):
-        from llmforge import gguf_to_onnx_runner
+        from vectorprime import gguf_to_onnx_runner
         mock_gguf, mock_onnx, np = self._make_mocks()
         mock_gguf.GGUFReader.side_effect = Exception("corrupt file")
         with patch.dict(sys.modules, {"gguf": mock_gguf, "onnx": mock_onnx, "numpy": np}):
@@ -182,7 +182,7 @@ class TestGgufToOnnxRun:
         assert "error" in payload
 
     def test_onnx_write_failure_exits(self, capsys):
-        from llmforge import gguf_to_onnx_runner
+        from vectorprime import gguf_to_onnx_runner
         mock_gguf, mock_onnx, np = self._make_mocks()
         mock_onnx.save.side_effect = Exception("disk full")
         with patch.dict(sys.modules, {"gguf": mock_gguf, "onnx": mock_onnx, "numpy": np}):
@@ -197,7 +197,7 @@ class TestGgufToOnnxRun:
 
 class TestGgufToOnnxMain:
     def test_valid_stdin_calls_run(self):
-        from llmforge import gguf_to_onnx_runner
+        from vectorprime import gguf_to_onnx_runner
         payload = json.dumps({"input_path": "m.gguf", "output_path": "m.onnx"})
         with patch.object(gguf_to_onnx_runner, "_run") as mock_run:
             with patch("sys.stdin", StringIO(payload)):
@@ -205,7 +205,7 @@ class TestGgufToOnnxMain:
         mock_run.assert_called_once()
 
     def test_invalid_stdin_json_exits(self, capsys):
-        from llmforge import gguf_to_onnx_runner
+        from vectorprime import gguf_to_onnx_runner
         with patch("sys.stdin", StringIO("not valid json{{{")):
             with pytest.raises(SystemExit):
                 gguf_to_onnx_runner.main()
@@ -218,7 +218,7 @@ class TestGgufToOnnxMain:
 
 class TestOnnxToGgufError:
     def test_writes_json_error_and_exits(self, capsys):
-        from llmforge.onnx_to_gguf_runner import _error
+        from vectorprime.onnx_to_gguf_runner import _error
         with pytest.raises(SystemExit) as exc:
             _error("test error")
         assert exc.value.code == 1
@@ -233,21 +233,21 @@ class TestOnnxToGgufError:
 class TestOnnxToGgufCheckImports:
     def test_missing_onnx_exits(self, capsys):
         with _absent("onnx"):
-            from llmforge import onnx_to_gguf_runner
+            from vectorprime import onnx_to_gguf_runner
             with pytest.raises(SystemExit) as exc:
                 onnx_to_gguf_runner._check_imports()
         assert exc.value.code != 0
 
     def test_missing_gguf_exits(self, capsys):
         with _absent("gguf"):
-            from llmforge import onnx_to_gguf_runner
+            from vectorprime import onnx_to_gguf_runner
             with pytest.raises(SystemExit) as exc:
                 onnx_to_gguf_runner._check_imports()
         assert exc.value.code != 0
 
     def test_missing_numpy_exits(self, capsys):
         with _absent("numpy"):
-            from llmforge import onnx_to_gguf_runner
+            from vectorprime import onnx_to_gguf_runner
             with pytest.raises(SystemExit) as exc:
                 onnx_to_gguf_runner._check_imports()
         assert exc.value.code != 0
@@ -265,35 +265,35 @@ class TestWriteMetadata:
         return MagicMock()
 
     def test_writes_string_fields(self):
-        from llmforge.onnx_to_gguf_runner import _write_metadata
+        from vectorprime.onnx_to_gguf_runner import _write_metadata
         writer = self._make_writer()
         with patch.dict(sys.modules, {"gguf": self._mock_gguf()}):
             _write_metadata(writer, {"general.name": "llama"})
         writer.add_string.assert_called_with("general.name", "llama")
 
     def test_writes_int_fields(self):
-        from llmforge.onnx_to_gguf_runner import _write_metadata
+        from vectorprime.onnx_to_gguf_runner import _write_metadata
         writer = self._make_writer()
         with patch.dict(sys.modules, {"gguf": self._mock_gguf()}):
             _write_metadata(writer, {"llama.context_length": 4096})
         writer.add_int32.assert_called_with("llama.context_length", 4096)
 
     def test_writes_float_fields(self):
-        from llmforge.onnx_to_gguf_runner import _write_metadata
+        from vectorprime.onnx_to_gguf_runner import _write_metadata
         writer = self._make_writer()
         with patch.dict(sys.modules, {"gguf": self._mock_gguf()}):
             _write_metadata(writer, {"llama.rope_freq_base": 10000.0})
         writer.add_float32.assert_called_with("llama.rope_freq_base", 10000.0)
 
     def test_writes_bool_fields(self):
-        from llmforge.onnx_to_gguf_runner import _write_metadata
+        from vectorprime.onnx_to_gguf_runner import _write_metadata
         writer = self._make_writer()
         with patch.dict(sys.modules, {"gguf": self._mock_gguf()}):
             _write_metadata(writer, {"general.quantized": True})
         writer.add_bool.assert_called_with("general.quantized", True)
 
     def test_skips_internal_underscore_keys(self):
-        from llmforge.onnx_to_gguf_runner import _write_metadata
+        from vectorprime.onnx_to_gguf_runner import _write_metadata
         writer = self._make_writer()
         with patch.dict(sys.modules, {"gguf": self._mock_gguf()}):
             _write_metadata(writer, {"_skipped_tensors": [{"name": "x"}]})
@@ -301,7 +301,7 @@ class TestWriteMetadata:
         writer.add_int32.assert_not_called()
 
     def test_bad_value_does_not_raise(self):
-        from llmforge.onnx_to_gguf_runner import _write_metadata
+        from vectorprime.onnx_to_gguf_runner import _write_metadata
         writer = self._make_writer()
         writer.add_string.side_effect = Exception("boom")
         with patch.dict(sys.modules, {"gguf": self._mock_gguf()}):
@@ -345,7 +345,7 @@ class TestOnnxToGgufRun:
         return mock_onnx, mock_gguf, np
 
     def test_success_outputs_json(self, capsys, tmp_path):
-        from llmforge import onnx_to_gguf_runner
+        from vectorprime import onnx_to_gguf_runner
         mock_onnx, mock_gguf, np = self._make_mocks()
         out_path = str(tmp_path / "model.gguf")
         with patch.dict(sys.modules, {"onnx": mock_onnx, "gguf": mock_gguf, "numpy": np}):
@@ -358,7 +358,7 @@ class TestOnnxToGgufRun:
 
     def test_metadata_round_tripped_from_doc_string(self, capsys, tmp_path):
         """JSON in doc_string should be parsed and written as GGUF metadata."""
-        from llmforge import onnx_to_gguf_runner
+        from vectorprime import onnx_to_gguf_runner
         metadata = json.dumps({"general.architecture": "llama", "llama.context_length": 2048})
         mock_onnx, mock_gguf, np = self._make_mocks(doc_string=metadata)
         out_path = str(tmp_path / "model.gguf")
@@ -372,7 +372,7 @@ class TestOnnxToGgufRun:
 
     def test_non_json_doc_string_ignored(self, capsys, tmp_path):
         """A plain-text doc_string must not crash the converter."""
-        from llmforge import onnx_to_gguf_runner
+        from vectorprime import onnx_to_gguf_runner
         mock_onnx, mock_gguf, np = self._make_mocks(doc_string="This is a plain text comment.")
         out_path = str(tmp_path / "model.gguf")
         with patch.dict(sys.modules, {"onnx": mock_onnx, "gguf": mock_gguf, "numpy": np}):
@@ -384,21 +384,21 @@ class TestOnnxToGgufRun:
         assert payload["output_path"] == out_path
 
     def test_missing_input_path_exits(self, capsys):
-        from llmforge import onnx_to_gguf_runner
+        from vectorprime import onnx_to_gguf_runner
         mock_onnx, mock_gguf, np = self._make_mocks()
         with patch.dict(sys.modules, {"onnx": mock_onnx, "gguf": mock_gguf, "numpy": np}):
             with pytest.raises(SystemExit):
                 onnx_to_gguf_runner._run({"output_path": "out.gguf"})
 
     def test_missing_output_path_exits(self, capsys):
-        from llmforge import onnx_to_gguf_runner
+        from vectorprime import onnx_to_gguf_runner
         mock_onnx, mock_gguf, np = self._make_mocks()
         with patch.dict(sys.modules, {"onnx": mock_onnx, "gguf": mock_gguf, "numpy": np}):
             with pytest.raises(SystemExit):
                 onnx_to_gguf_runner._run({"input_path": "model.onnx"})
 
     def test_onnx_load_failure_exits(self, capsys):
-        from llmforge import onnx_to_gguf_runner
+        from vectorprime import onnx_to_gguf_runner
         mock_onnx, mock_gguf, np = self._make_mocks()
         mock_onnx.load.side_effect = Exception("corrupt onnx")
         with patch.dict(sys.modules, {"onnx": mock_onnx, "gguf": mock_gguf, "numpy": np}):
@@ -409,7 +409,7 @@ class TestOnnxToGgufRun:
         assert "error" in payload
 
     def test_no_tensors_exits(self, capsys):
-        from llmforge import onnx_to_gguf_runner
+        from vectorprime import onnx_to_gguf_runner
         mock_onnx, mock_gguf, np = self._make_mocks()
         mock_onnx.load.return_value.graph.initializer = []
         with patch.dict(sys.modules, {"onnx": mock_onnx, "gguf": mock_gguf, "numpy": np}):
@@ -418,7 +418,7 @@ class TestOnnxToGgufRun:
         assert exc.value.code != 0
 
     def test_gguf_write_failure_exits(self, capsys):
-        from llmforge import onnx_to_gguf_runner
+        from vectorprime import onnx_to_gguf_runner
         mock_onnx, mock_gguf, np = self._make_mocks()
         mock_gguf.GGUFWriter.side_effect = Exception("disk full")
         with patch.dict(sys.modules, {"onnx": mock_onnx, "gguf": mock_gguf, "numpy": np}):
@@ -433,7 +433,7 @@ class TestOnnxToGgufRun:
 
 class TestOnnxToGgufMain:
     def test_valid_stdin_calls_run(self):
-        from llmforge import onnx_to_gguf_runner
+        from vectorprime import onnx_to_gguf_runner
         payload = json.dumps({"input_path": "m.onnx", "output_path": "m.gguf"})
         with patch.object(onnx_to_gguf_runner, "_run") as mock_run:
             with patch("sys.stdin", StringIO(payload)):
@@ -441,7 +441,7 @@ class TestOnnxToGgufMain:
         mock_run.assert_called_once()
 
     def test_invalid_stdin_json_exits(self, capsys):
-        from llmforge import onnx_to_gguf_runner
+        from vectorprime import onnx_to_gguf_runner
         with patch("sys.stdin", StringIO("{{not json")):
             with pytest.raises(SystemExit):
                 onnx_to_gguf_runner.main()

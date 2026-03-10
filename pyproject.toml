@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "llmforge"
+name = "vectorprime"
 version = "0.1.0"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
@@ -15,10 +15,10 @@ dependencies = [
 ]
 
 [project.scripts]
-llmforge = "llmforge.cli:main"
+vectorprime = "vectorprime.cli:main"
 
 [tool.maturin]
 python-source = "python"
-module-name = "llmforge._llmforge"
-manifest-path = "crates/llmforge-bindings/Cargo.toml"
+module-name = "vectorprime._vectorprime"
+manifest-path = "crates/vectorprime-bindings/Cargo.toml"
 

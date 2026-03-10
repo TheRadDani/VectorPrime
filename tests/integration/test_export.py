@@ -5,8 +5,8 @@ import os
 
 import pytest
 
-_llmforge = pytest.importorskip(
-    "llmforge._llmforge",
+_vectorprime = pytest.importorskip(
+    "vectorprime._vectorprime",
     reason="Native extension not compiled — run: maturin develop",
 )
 
@@ -24,7 +24,7 @@ skip_no_fixtures = pytest.mark.skipif(
 
 
 def _optimized_result():
-    return _llmforge.optimize(_GGUF, "gguf")
+    return _vectorprime.optimize(_GGUF, "gguf")
 
 
 # ── tests ─────────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ def _optimized_result():
 def test_export_creates_files(tmp_path):
     """export_ollama creates Modelfile, model.gguf, and metadata.json."""
     result = _optimized_result()
-    _llmforge.export_ollama(result, str(tmp_path))
+    _vectorprime.export_ollama(result, str(tmp_path))
     assert (tmp_path / "Modelfile").exists(), "Modelfile missing"
     assert (tmp_path / "model.gguf").exists(), "model.gguf missing"
     assert (tmp_path / "metadata.json").exists(), "metadata.json missing"
@@ -44,7 +44,7 @@ def test_export_creates_files(tmp_path):
 def test_modelfile_has_from(tmp_path):
     """Modelfile must start with a FROM directive pointing to ./model.gguf."""
     result = _optimized_result()
-    _llmforge.export_ollama(result, str(tmp_path))
+    _vectorprime.export_ollama(result, str(tmp_path))
     content = (tmp_path / "Modelfile").read_text(encoding="utf-8")
     assert "FROM ./model.gguf" in content
 
@@ -53,7 +53,7 @@ def test_modelfile_has_from(tmp_path):
 def test_manifest_has_commands(tmp_path):
     """The returned manifest JSON must contain exactly 2 ollama_commands."""
     result = _optimized_result()
-    manifest_json = _llmforge.export_ollama(result, str(tmp_path))
+    manifest_json = _vectorprime.export_ollama(result, str(tmp_path))
     manifest = json.loads(manifest_json)
     commands = manifest.get("ollama_commands", [])
     assert len(commands) == 2, f"expected 2 commands, got {commands}"

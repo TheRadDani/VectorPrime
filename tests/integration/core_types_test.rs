@@ -1,4 +1,4 @@
-//! Rust-level integration tests for llmforge-core shared types.
+//! Rust-level integration tests for vectorprime-core shared types.
 //!
 //! Run with: cargo test --workspace
 //!
@@ -7,7 +7,7 @@
 
 #[cfg(test)]
 mod core_types {
-    use llmforge_core::{
+    use vectorprime_core::{
         BenchmarkResult, CpuInfo, GpuInfo, HardwareProfile, ModelFormat, ModelInfo,
         OptimizationResult, QuantizationStrategy, RamInfo, RuntimeConfig, RuntimeKind,
         SimdLevel,

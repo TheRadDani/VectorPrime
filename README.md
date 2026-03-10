@@ -1,22 +1,22 @@
 <p align="center">
   <pre align="center">
-  ██╗     ██╗     ███╗   ███╗███████╗ ██████╗ ██████╗  ██████╗ ███████╗
-  ██║     ██║     ████╗ ████║██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝
-  ██║     ██║     ██╔████╔██║█████╗  ██║   ██║██████╔╝██║  ███╗█████╗
-  ██║     ██║     ██║╚██╔╝██║██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝
-  ███████╗███████╗██║ ╚═╝ ██║██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗
-  ╚══════╝╚══════╝╚═╝     ╚═╝╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
+ ██╗   ██╗███████╗ ██████╗████████╗ ██████╗ ██████╗ ██████╗ ██████╗ ██╗███╗   ███╗███████╗
+ ██║   ██║██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██╔══██╗██╔══██╗██╔══██╗██║████╗ ████║██╔════╝
+ ██║   ██║█████╗  ██║        ██║   ██║   ██║██████╔╝██████╔╝██████╔╝██║██╔████╔██║█████╗
+ ╚██╗ ██╔╝██╔══╝  ██║        ██║   ██║   ██║██╔══██╗██╔═══╝ ██╔══██╗██║██║╚██╔╝██║██╔══╝
+  ╚████╔╝ ███████╗╚██████╗   ██║   ╚██████╔╝██║  ██║██║     ██║  ██║██║██║ ╚═╝ ██║███████╗
+   ╚═══╝  ╚══════╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝  ╚═╝╚═╝╚═╝     ╚═╝╚══════╝
   </pre>
 </p>
 
 <p align="center">
-  <strong>Hardware-aware LLM inference optimizer</strong>
+  <strong>Compiler-style, hardware-aware LLM inference optimizer</strong>
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/llmforge/"><img src="https://img.shields.io/pypi/v/llmforge?style=flat-square&color=blue" alt="PyPI version"></a>
-  <a href="https://pypi.org/project/llmforge/"><img src="https://img.shields.io/pypi/pyversions/llmforge?style=flat-square" alt="Python versions"></a>
-  <a href="https://pypi.org/project/llmforge/"><img src="https://img.shields.io/pypi/dm/llmforge?style=flat-square&color=green" alt="Monthly downloads"></a>
+  <a href="https://pypi.org/project/vectorprime/"><img src="https://img.shields.io/pypi/v/vectorprime?style=flat-square&color=blue" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/vectorprime/"><img src="https://img.shields.io/pypi/pyversions/vectorprime?style=flat-square" alt="Python versions"></a>
+  <a href="https://pypi.org/project/vectorprime/"><img src="https://img.shields.io/pypi/dm/vectorprime?style=flat-square&color=green" alt="Monthly downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"></a>
   <a href="https://github.com/TheRadDani/llm-forge/actions"><img src="https://img.shields.io/github/actions/workflow/status/TheRadDani/llm-forge/ci.yml?style=flat-square&label=CI" alt="CI status"></a>
   <a href="https://github.com/TheRadDani/llm-forge/stargazers"><img src="https://img.shields.io/github/stars/TheRadDani/llm-forge?style=flat-square" alt="GitHub stars"></a>
@@ -25,9 +25,9 @@
 
 ---
 
-LLMForge takes a model file and your hardware, then finds the fastest way to run it. It profiles your CPU, GPU, and RAM; generates every valid combination of runtime, quantization, thread count, and GPU offload layers; benchmarks them in parallel; and hands you back the configuration that maximizes tokens per second within your memory budget. The result is a ready-to-use Ollama bundle — no guesswork required.
+VectorPrime takes a model file and your hardware, then finds the fastest way to run it. It profiles your CPU, GPU, and RAM; parses the model's intermediate representation to extract architecture metadata; generates every valid combination of runtime, quantization, thread count, and GPU offload layers; benchmarks candidates in parallel; and hands you back the configuration that maximizes tokens per second within your memory budget. The result is a ready-to-use Ollama bundle — no guesswork required.
 
-LLMForge is built for developers and researchers who run inference locally and want reproducible, hardware-specific performance without manually tuning llama.cpp flags or hunting for the right quantization format. The Rust backend handles parallel benchmarking and hardware detection; a PyO3 native extension exposes everything through a clean Python API and a single `pip install`.
+VectorPrime is built for developers and researchers who run inference locally and want reproducible, hardware-specific performance without manually tuning runtime flags or hunting for the right quantization format. The Rust backend handles parallel benchmarking and hardware detection; a PyO3 native extension exposes everything through a clean Python API and a single `pip install vectorprime`.
 
 ---
 
@@ -35,101 +35,208 @@ LLMForge is built for developers and researchers who run inference locally and w
 
 | Feature | Description | Status |
 |---|---|---|
-| 🧠 Hardware profiling | Detects CPU brand, core count, SIMD level (AVX/AVX2/AVX512), GPU VRAM, compute capability, and available RAM | Stable |
-| ⚡ Multi-runtime support | Benchmarks llama.cpp, ONNX Runtime, and TensorRT against each other on your hardware | Stable |
-| 🎯 Automatic quantization selection | Evaluates F16, Q8_0, Q4_K_M, Q4_0, Int8, and Int4 and picks the fastest that fits in memory | Stable |
-| 📊 Parallel benchmarking | Tokio-based async executor runs up to 3 configurations concurrently | Stable |
-| 🚀 Ollama export | Generates a `Modelfile` with tuned `num_thread` and `num_gpu` values, ready for `ollama create` | Stable |
-| 🐍 Python API | PyO3 native extension — import and call from any Python script or notebook | Stable |
-| 🔧 CLI interface | `profile`, `optimize`, and `export-ollama` subcommands | Stable |
-
----
-
-## 📊 Performance Results
-
-The table below shows illustrative results from running `llmforge optimize` on typical consumer hardware. Your results will vary based on your specific CPU/GPU and available memory.
-
-| Model | Runtime | Quantization | Threads | GPU Layers | Throughput (tok/s) | Latency (ms) | Memory (GB) |
-|---|---|---|---|---|---|---|---|
-| Llama 3.1 8B | llama.cpp | Q4_K_M | 16 | 20 | 110.3 | 91.2 | 8.2 |
-| Llama 3.1 8B | llama.cpp | Q8_0 | 16 | 10 | 74.1 | 135.4 | 12.8 |
-| Mistral 7B | llama.cpp | Q4_K_M | 16 | 20 | 118.7 | 84.2 | 7.4 |
-| Mistral 7B | ONNX Runtime | Int8 | 8 | 0 | 42.3 | 236.8 | 9.1 |
-| Phi-3 Mini 3.8B | TensorRT | Int8 | 8 | 33 | 198.4 | 50.4 | 5.6 |
-
-*Results recorded on a system with Intel Core i9-13900K (16 cores, AVX-512), NVIDIA RTX 4090 (24 GB VRAM), 64 GB DDR5 RAM. Illustrative only.*
-
----
-
-## Supported Runtimes
-
-| Runtime | Backend Binary | Model Format | Hardware |
-|---|---|---|---|
-| llama.cpp | `llama-cli` | GGUF | CPU + NVIDIA/AMD GPU offload |
-| ONNX Runtime | `python3` + `onnxruntime` | ONNX | CPU + GPU |
-| TensorRT | `trtexec` | ONNX | NVIDIA GPU (compute capability >= 7.0) |
-
-Missing binaries are detected at startup and the corresponding runtime is skipped gracefully — LLMForge will benchmark whatever runtimes are installed.
-
----
-
-## Installation
-
-```bash
-pip install llmforge
-```
-
-**Requirements:**
-- Python 3.9 or later
-- At least one supported inference runtime (see below)
-
-**Optional runtime prerequisites:**
-
-```bash
-# llama.cpp (recommended for most users)
-# Build from source: https://github.com/ggml-org/llama.cpp
-# or install via a package manager on your platform
-
-# ONNX Runtime
-pip install onnxruntime          # CPU
-pip install onnxruntime-gpu      # GPU
-
-# TensorRT (NVIDIA only, compute capability >= 7.0)
-# Install via: https://developer.nvidia.com/tensorrt
-```
+| Hardware profiling | Detects CPU core count, SIMD level (AVX/AVX2/AVX512), GPU VRAM and compute capability, and available RAM | Stable |
+| Model IR analysis | Reads GGUF and ONNX model files to extract parameter count, architecture, context length, and layer count without running inference | Stable |
+| Multi-runtime support | Benchmarks Ollama, TensorRT, ONNX Runtime, and llama.cpp against each other on your hardware | Stable |
+| Automatic quantization selection | Evaluates F16, Q8\_0, Q4\_K\_M, Q4\_0, Int8, and Int4 and picks the fastest that fits in memory | Stable |
+| Parallel benchmarking | Tokio-based async executor runs up to 3 configurations concurrently | Stable |
+| Ollama export | Generates a `Modelfile` with tuned `num_thread` and `num_gpu` values, ready for `ollama create` | Stable |
+| Format conversion | Bidirectional GGUF-to-ONNX and ONNX-to-GGUF conversion with full metadata round-trip | Stable |
+| Python API | PyO3 native extension — import and call from any Python script or notebook | Stable |
+| CLI interface | `profile`, `optimize`, `export-ollama`, `convert-to-onnx`, and `convert-to-gguf` subcommands | Stable |
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Profile your hardware
-llmforge profile
+pip install vectorprime
 
-# 2. Find the best configuration for a model
-llmforge optimize model.gguf
+# See what hardware VectorPrime detected
+vectorprime profile
 
-# 3. Export the optimized model as an Ollama bundle
-llmforge export-ollama model.gguf --result model.gguf.llmforge_result.json
+# Find the best inference configuration for a model
+vectorprime optimize model.gguf
+
+# Export the result as an Ollama bundle
+vectorprime export-ollama model.gguf \
+  --result model.gguf.vectorprime_result.json \
+  --output-dir ./optimized_model
 ```
 
-**Example output of `llmforge optimize`:**
+---
+
+## Installation
+
+```bash
+pip install vectorprime
+```
+
+**Requirements:**
+- Python 3.9 or later
+- Linux x86-64 (pre-built wheel provided; other platforms require the Rust toolchain for source compilation)
+- At least one supported inference runtime installed and on `PATH`
+
+**Optional runtime prerequisites:**
+
+```bash
+# Ollama — recommended for most users
+# https://ollama.com/download
+
+# ONNX Runtime
+pip install onnxruntime          # CPU
+pip install onnxruntime-gpu      # CUDA GPU
+
+# TensorRT (NVIDIA only, compute capability >= 7.0)
+# https://developer.nvidia.com/tensorrt
+
+# llama.cpp (provides llama-cli and llama-quantize)
+# https://github.com/ggml-org/llama.cpp
+```
+
+VectorPrime detects which runtimes are available at startup and silently skips any whose binary is not found. `vectorprime profile` works with no runtimes installed.
+
+---
+
+## Usage
+
+### Profile Hardware
+
+```bash
+vectorprime profile
+```
+
+Prints a JSON hardware profile to stdout:
+
+```json
+{
+  "cpu": { "core_count": 16, "simd_level": "AVX2" },
+  "gpu": { "name": "NVIDIA GeForce RTX 4090", "vram_mb": 24564, "compute_capability": [8, 9] },
+  "ram": { "total_mb": 65536, "available_mb": 48000 }
+}
+```
+
+### Optimize a Model
+
+```bash
+vectorprime optimize model.gguf
+```
 
 ```
 ─────────────────────────────────────
-LLMForge Optimization Result
+VectorPrime Optimization Result
 ─────────────────────────────────────
-Runtime:       llama.cpp
+Runtime:       LlamaCpp
 Quantization:  Q4_K_M
 Threads:       16
 GPU Layers:    20
-
-Performance:
-  Throughput:  110.3 tokens/sec
-  Latency:     91.2 ms
-  Memory:      8.2 GB peak
+Throughput:    110.3 tokens/sec
+Latency:       91.2 ms
+Memory:        8.2 GB peak
 ─────────────────────────────────────
-Result written to: model.gguf.llmforge_result.json
+Optimized model written to: model-optimized.gguf
+```
+
+The result is also written to `model.gguf.vectorprime_result.json`.
+
+**Options:**
+
+```
+vectorprime optimize <model_path> [OPTIONS]
+
+Arguments:
+  model_path              Path to the model file (.gguf or .onnx).
+
+Options:
+  --format {gguf,onnx}    Model format. Auto-detected from extension when omitted.
+  --max-memory MB         Warn if peak memory exceeds this limit (MB).
+  --gpu MODEL             Target GPU model (e.g. 4090, a100, h100, or 'cpu' for
+                          CPU-only). Overrides auto-detected hardware.
+  --latency MS            Maximum tolerated latency (ms). Configurations above
+                          this threshold are excluded.
+  --output PATH           Destination path for the re-quantized output model.
+```
+
+### Export to Ollama
+
+```bash
+vectorprime export-ollama model.gguf \
+  --result model.gguf.vectorprime_result.json \
+  --output-dir ./optimized_model
+```
+
+Produces:
+
+```
+optimized_model/
+├── Modelfile        # FROM + PARAMETER blocks
+├── model.gguf       # the (re-quantized) model file
+└── metadata.json    # full OptimizationResult for reference
+```
+
+Then:
+
+```bash
+ollama create mymodel -f optimized_model/Modelfile
+ollama run mymodel
+```
+
+### Convert Between Formats
+
+```bash
+# GGUF → ONNX
+vectorprime convert-to-onnx model.gguf --output model.onnx
+
+# ONNX → GGUF (metadata is round-tripped from the original GGUF when available)
+vectorprime convert-to-gguf model.onnx --output model.gguf
+```
+
+---
+
+## Supported Runtimes
+
+| Runtime | Priority | Backend Binary | Model Format | Notes |
+|---|---|---|---|---|
+| Ollama | Primary | `ollama` | GGUF | Recommended for most users |
+| TensorRT | Primary | `trtexec` | ONNX | NVIDIA GPU, compute capability >= 7.0 |
+| ONNX Runtime | Secondary | `python3` + `onnxruntime` | ONNX | CPU and CUDA execution providers |
+| llama.cpp | Deprioritized | `llama-cli` | GGUF | CPU + GPU offload via `--n-gpu-layers` |
+
+Missing binaries return a structured `NotInstalled` error and are skipped — VectorPrime benchmarks whatever runtimes are present.
+
+---
+
+## How It Works
+
+VectorPrime runs a six-stage compiler-style pipeline:
+
+```
+[1] hardware_profiler
+      CPU cores, SIMD extensions (via raw-cpuid), GPU VRAM and compute
+      capability (via nvidia-smi), available RAM (via sysinfo).
+
+[2] model_ir_analyzer
+      Parses the model file — GGUF via a custom byte reader, ONNX via
+      protobuf — to extract parameter count, architecture, context length,
+      and layer count without running inference.
+
+[3] optimization_engine
+      Generates candidates as the cross-product of
+      (runtime × quantization × thread count × GPU offload layers),
+      pruned by VRAM and RAM constraints.
+
+[4] runtime_adapters
+      Shells out to llama-cli, trtexec, or python3 for each candidate.
+      Adapters never link runtimes directly; a missing binary is a
+      structured error, not a panic.
+
+[5] benchmark_runner
+      Benchmarks up to 3 candidates concurrently (Tokio semaphore).
+      Collects tokens/sec, latency, and peak memory per candidate.
+
+[6] artifact_exporter
+      Writes the winning configuration as a Modelfile + metadata.json
+      for Ollama, and optionally re-quantizes the model with llama-quantize.
 ```
 
 ---
@@ -137,231 +244,135 @@ Result written to: model.gguf.llmforge_result.json
 ## Python API
 
 ```python
-import llmforge
+import vectorprime
 
-# Detect host hardware
-hw = llmforge.profile_hardware()
-print(hw)
-# HardwareProfile { cpu: Intel Core i9-13900K (16 cores, AVX512),
-#                   gpu: Some(NVIDIA RTX 4090, 24576 MB),
-#                   ram: 65536 MB total }
+# Profile hardware
+hw = vectorprime.profile_hardware()
+print(hw.cpu_cores, hw.gpu_model, hw.ram_total_mb)
 
-# Find the optimal runtime configuration for a model
-result = llmforge.optimize("model.gguf", "gguf")
-print(result)
-# OptimizationResult { runtime: LlamaCpp, quantization: Q4_K_M,
-#                      threads: 16, gpu_layers: 20,
-#                      tokens_per_sec: 110.3, latency_ms: 91.2 }
+# Inspect a model's architecture without running inference
+model_info = vectorprime.analyze_model("model.gguf")
+
+# Run optimization
+result = vectorprime.optimize("model.gguf", "gguf")
+print(result.runtime, result.tokens_per_sec, result.latency_ms)
+# LlamaCpp  110.3  91.2
 
 # Export an Ollama-ready bundle
-manifest_json = llmforge.export_ollama(result, "./optimized_model")
+manifest_json = vectorprime.export_ollama(result, "./optimized_model")
 
-# Then from the terminal:
-# ollama create mymodel -f optimized_model/Modelfile
-# ollama run mymodel
+# Convert formats
+vectorprime.convert_gguf_to_onnx("model.gguf", "model.onnx")
+vectorprime.convert_onnx_to_gguf("model.onnx", "model-roundtrip.gguf")
 ```
 
 ---
 
-## CLI Reference
+## Performance Example
 
-```
-llmforge profile
-```
+Results from `vectorprime optimize` on a system with Intel Core i9-13900K (16 cores, AVX-512), NVIDIA RTX 4090 (24 GB VRAM), 64 GB DDR5 RAM. Your results will vary.
 
-Detects CPU, GPU, and RAM and prints a JSON hardware profile.
-
-```
-llmforge optimize <model_path> [--format gguf|onnx] [--max-memory MB]
-```
-
-Benchmarks all applicable runtime/quantization/thread configurations and prints the winner. Auto-detects format from `.gguf` or `.onnx` extension when `--format` is omitted. Writes the result to `<model_path>.llmforge_result.json`.
-
-```
-llmforge export-ollama <model_path> [--result FILE] [--output-dir DIR]
-```
-
-Exports an Ollama-compatible bundle. If `--result` is supplied, the previously computed optimization result is reused and no re-benchmarking occurs. The bundle is written to `--output-dir` (default: `optimized_model/`).
-
----
-
-## How It Works
-
-1. **Profile hardware** — LLMForge reads CPU brand, core count, and SIMD extensions via `raw-cpuid`; queries NVIDIA VRAM and compute capability via `nvidia-smi`; and reads total and available RAM via `sysinfo`.
-
-2. **Generate candidates** — The search space is the cross-product of (runtime x quantization x thread counts x GPU offload layers), pruned by hardware constraints. Thread count options are `[cores/2, cores, cores*2]` capped to 64. TensorRT is excluded on non-NVIDIA hardware or compute capability < 7.0.
-
-3. **Benchmark in parallel** — Each candidate is benchmarked by shelling out to the appropriate binary (`llama-cli`, `python3 onnx_runner.py`, or `trtexec`). A Tokio semaphore limits concurrency to three simultaneous runs to avoid resource contention.
-
-4. **Select the best** — Results are filtered to exclude configurations that exceed 90% of available RAM, then sorted by tokens per second. The top result is returned.
-
-5. **Export to Ollama** — LLMForge writes a `Modelfile` with the tuned `num_thread` and `num_gpu` parameters, copies the model file, and writes a `metadata.json` with the full optimization result.
+| Model | Runtime | Quantization | Threads | GPU Layers | Throughput (tok/s) | Latency (ms) | Memory (GB) |
+|---|---|---|---|---|---|---|---|
+| Llama 3.1 8B | LlamaCpp | Q4\_K\_M | 16 | 20 | 110.3 | 91.2 | 8.2 |
+| Llama 3.1 8B | LlamaCpp | Q8\_0 | 16 | 10 | 74.1 | 135.4 | 12.8 |
+| Mistral 7B | LlamaCpp | Q4\_K\_M | 16 | 20 | 118.7 | 84.2 | 7.4 |
+| Mistral 7B | OnnxRuntime | Int8 | 8 | 0 | 42.3 | 236.8 | 9.1 |
+| Phi-3 Mini 3.8B | TensorRT | Int8 | 8 | 33 | 198.4 | 50.4 | 5.6 |
 
 ---
 
 ## Architecture
 
-```
-python/llmforge/cli.py       (argparse CLI)
-        |
-        v
-llmforge-bindings            (PyO3 native extension — _llmforge.so)
-        |
-        +---> llmforge-export      (Ollama bundle generation)
-        |           |
-        +---> llmforge-optimizer   (search space + parallel benchmark loop)
-        |           |
-        |     +-----+-----+
-        |     |           |
-        +---> llmforge-hardware    llmforge-runtime   (adapter dispatch)
-              |                         |
-              +-------> llmforge-core <-+
-                        (shared types, traits, errors)
-```
+VectorPrime is a Rust workspace. The Python layer (CLI + helpers) sits on top of a `cdylib` native extension compiled via PyO3 and maturin.
 
-**Key crates:**
+```
+python/vectorprime/cli.py         (argparse CLI — 5 subcommands)
+          |
+          v
+vectorprime-bindings              (PyO3 cdylib — _vectorprime.so)
+          |
+          +---> vectorprime-export      (Ollama bundle generation)
+          |           |
+          +---> vectorprime-optimizer   (search + parallel benchmark loop)
+          |           |
+          |     +-----+-----+
+          |     |           |
+          +---> vectorprime-hardware    vectorprime-runtime  (adapter dispatch)
+          |     |                             |
+          +---> vectorprime-model-ir          |
+                          |                  |
+                          +---> vectorprime-core <--+
+                               (shared types/traits/errors)
+```
 
 | Crate | Responsibility |
 |---|---|
-| `llmforge-core` | Shared types (`HardwareProfile`, `OptimizationResult`, etc.), the `RuntimeAdapter` and `GpuProbe` traits, and structured errors |
-| `llmforge-hardware` | CPU/GPU/RAM detection; `GpuProbe` implementations for NVIDIA |
-| `llmforge-runtime` | `RuntimeAdapter` implementations for llama.cpp, ONNX Runtime, and TensorRT |
-| `llmforge-optimizer` | Candidate generation, Tokio-based parallel benchmark loop, best-result selector |
-| `llmforge-export` | Ollama `Modelfile` generation, GGUF copy, metadata serialization |
-| `llmforge-bindings` | PyO3 `#[pymodule]` wiring all crates into the `_llmforge` native extension |
-
-**Design principles:**
-
-- **Shell-out adapters** — runtimes are invoked as subprocesses rather than linked libraries, so LLMForge works with any installed version without recompilation.
-- **`RuntimeAdapter` trait** — adding a new runtime means implementing four methods; the optimizer does not change.
-- **`GpuProbe` trait** — GPU vendor detection is pluggable; AMD and Apple Metal probes can be added without touching the hardware profiler.
+| `vectorprime-core` | `HardwareProfile`, `OptimizationResult`, `RuntimeAdapter` trait, `GpuProbe` trait, `RuntimeError` |
+| `vectorprime-hardware` | CPU detection (raw-cpuid), NVIDIA GPU detection (nvidia-smi), RAM (sysinfo) |
+| `vectorprime-model-ir` | GGUF byte reader and ONNX protobuf parser; extracts architecture metadata without inference |
+| `vectorprime-runtime` | `LlamaCppAdapter`, `OnnxAdapter`, `TensorRtAdapter`; adapter registry and dispatch |
+| `vectorprime-optimizer` | Candidate generation, Tokio semaphore benchmark loop, best-result selector |
+| `vectorprime-export` | `Modelfile` writer, GGUF copy, metadata.json serialization |
+| `vectorprime-bindings` | PyO3 `#[pymodule]` wiring every crate into the `_vectorprime` extension module |
 
 ---
 
-## Build From Source
+## Build from Source
 
 ### Prerequisites
 
-| Tool | Minimum version | Install |
+| Tool | Version | Install |
 |---|---|---|
-| Rust toolchain | 1.75 | `curl https://sh.rustup.rs -sSf \| sh` |
-| Python | 3.9 | [python.org](https://www.python.org/downloads/) or your system package manager |
-| maturin | 1.0 | `pip install maturin` |
-| cargo-tarpaulin *(optional, coverage)* | latest | `cargo install cargo-tarpaulin --locked` |
+| Rust toolchain | 1.75+ | `curl https://sh.rustup.rs -sSf \| sh` |
+| Python | 3.9+ | [python.org](https://www.python.org/) |
+| maturin | 1.0+ | `pip install maturin` |
+| Python dev headers | — | `sudo apt install python3-dev` (Debian/Ubuntu) |
 
-> **Linux only:** install the Python development headers if they are not already present.  
-> Debian/Ubuntu: `sudo apt install python3-dev`  
-> Fedora/RHEL:   `sudo dnf install python3-devel`
-
----
-
-### 1 · Clone and set up the environment
+### Build
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/llm-forge
+git clone https://github.com/TheRadDani/llm-forge
 cd llm-forge
 
-# Create and activate an isolated Python environment (recommended)
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
+pip install maturin pytest numpy onnxruntime
 
-# Install Python build and test dependencies
-pip install --upgrade pip
-pip install maturin pytest pytest-cov onnxruntime numpy
+# Compile the Rust extension and install into the active venv
+maturin develop
+
+# Verify
+vectorprime profile
 ```
 
----
-
-### 2 · Build the native Rust extension
+### Run Tests
 
 ```bash
-# Development build — compiles the Rust crates and installs the .so into the
-# active Python environment as an editable package (fastest iteration cycle)
-maturin build
-
-# Verify the extension loaded correctly
-llmforge profile
-```
-
-You should see a JSON hardware profile printed to stdout. If you see an
-`ImportError`, run `cargo clean -p llmforge-bindings && maturin build` to
-force a full recompile.
-
----
-
-### 3 · Run the test suite
-
-```bash
-# Rust unit + integration tests (all crates)
+# All Rust unit tests
 cargo test --workspace
 
-# Check code style
+# Code style and lint
 cargo fmt --all -- --check
-
-# Linter (zero warnings enforced)
 cargo clippy --all-targets --all-features -- -D warnings
 
-# Python tests (no model fixtures required)
-pytest tests/unit/ tests/integration/ -m "not requires_fixtures and not requires_gpu" -v
+# Python integration tests (no fixtures or GPU required)
+pytest tests/ -v
 ```
-
----
-
-### 4 · Check coverage (≥ 70 % gate)
-
-```bash
-# Run both Rust (tarpaulin) and Python (pytest-cov) coverage in one step
-bash scripts/coverity.sh
-
-# Override the threshold
-COVERAGE_THRESHOLD=80 bash scripts/coverity.sh
-```
-
-HTML reports are written to `coverage/rust/` and `coverage/python/htmlcov/`.
-
----
-
-### 5 · Build a release wheel
-
-```bash
-maturin build --release
-pip install target/wheels/llmforge-*.whl
-
-# Smoke-test the installed wheel
-llmforge profile
-llmforge optimize --help
-```
-
----
-
-### Common build issues
-
-| Symptom | Fix |
-|---|---|
-| `ImportError: dynamic module does not define module export function` | Stale build cache. Run `cargo clean -p llmforge-bindings && maturin build`. |
-| `error[E0463]: can't find crate for …` | Run `rustup update stable` to ensure your toolchain matches the edition in `Cargo.toml`. |
-| `maturin: command not found` | Run `pip install maturin` inside your active virtual environment. |
-| Clippy `error: manual implementation of split_once` | Run `cargo fmt --all` then `cargo clippy --fix`. |
-| Low coverage gate failure | Add tests under `tests/unit/` until `bash scripts/coverity.sh` passes. |
 
 ---
 
 ## Contributing
 
-Contributions are welcome. Bug reports, feature requests, documentation improvements, and new runtime adapters are all useful.
-
-**Workflow:**
+Contributions are welcome — bug reports, feature requests, documentation improvements, and new runtime adapters.
 
 1. Fork the repository and create a branch from `main`
 2. Make your changes with tests
-3. Verify that `cargo test --workspace` and `pytest tests/` both pass
-4. Open a pull request with a clear description of the change
+3. Confirm `cargo test --workspace` and `pytest tests/` both pass
+4. Open a pull request with a clear description
 
-**Adding a new runtime adapter:**
+**Adding a new runtime:** Implement `RuntimeAdapter` in `crates/vectorprime-runtime/src/` and register the adapter in the `AdapterRegistry`. The optimizer and Python binding layers require no changes.
 
-Implement the `RuntimeAdapter` trait in `crates/llmforge-runtime/src/` and register the adapter in the dispatcher. The optimizer, export, and Python binding layers require no changes.
-
-See [open issues](https://github.com/YOUR_USERNAME/llm-forge/issues) for ideas, or open a new issue to discuss a change before starting work.
+See open [issues](https://github.com/TheRadDani/llm-forge/issues) for contribution ideas.
 
 ---
 
@@ -373,11 +384,12 @@ MIT. See [LICENSE](LICENSE) for the full text.
 
 ## Acknowledgments
 
-LLMForge builds on the shoulders of the following projects:
+VectorPrime builds on:
 
-- [llama.cpp](https://github.com/ggml-org/llama.cpp) — the `llama-cli` binary used by the llama.cpp adapter
-- [ONNX Runtime](https://onnxruntime.ai/) — the inference engine behind the ONNX adapter
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) — GGUF format specification and the `llama-cli` / `llama-quantize` binaries
+- [ONNX Runtime](https://onnxruntime.ai/) — inference engine behind the ONNX adapter
 - [TensorRT](https://developer.nvidia.com/tensorrt) — NVIDIA's high-performance inference library
-- [Ollama](https://ollama.com/) — the local model runner that LLMForge exports to
+- [Ollama](https://ollama.com/) — local model runner that VectorPrime exports to
 - [PyO3](https://pyo3.rs/) and [maturin](https://www.maturin.rs/) — Rust/Python interop and packaging
-- [Tokio](https://tokio.rs/) — the async runtime powering parallel benchmarking
+- [Tokio](https://tokio.rs/) — async runtime powering parallel benchmarking
+- [anyhow](https://github.com/dtolnay/anyhow) and [thiserror](https://github.com/dtolnay/thiserror) — structured error handling

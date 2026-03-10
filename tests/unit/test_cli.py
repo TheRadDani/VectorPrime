@@ -1,8 +1,8 @@
-"""Unit tests for llmforge.cli (pure-Python helpers, no native module)."""
+"""Unit tests for vectorprime.cli (pure-Python helpers, no native module)."""
 
 import pytest
 
-from llmforge.cli import detect_format
+from vectorprime.cli import detect_format
 
 
 def test_detect_format_gguf():

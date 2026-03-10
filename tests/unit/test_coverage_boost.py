@@ -1,5 +1,5 @@
 """
-Tests targeting uncovered branches in llmforge.cli and llmforge.onnx_runner.
+Tests targeting uncovered branches in vectorprime.cli and vectorprime.onnx_runner.
 All native-module calls are mocked so these run without a compiled extension.
 """
 
@@ -12,15 +12,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import llmforge as _llmforge_pkg  # imported once at collection time
+import vectorprime as _vectorprime_pkg  # imported once at collection time
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _mock_llmforge():
-    """Return a MagicMock that satisfies all _llmforge call sites in cli.py."""
+def _mock_vectorprime():
+    """Return a MagicMock that satisfies all _vectorprime call sites in cli.py."""
     m = MagicMock()
 
     hw = MagicMock()
@@ -58,18 +58,18 @@ def _mock_llmforge():
 @contextmanager
 def _patch_native(mock=None):
     """
-    Replace the compiled llmforge._llmforge extension with *mock* for the
+    Replace the compiled vectorprime._vectorprime extension with *mock* for the
     duration of the ``with`` block.
 
-    ``import llmforge._llmforge as X`` inside cli.py is compiled to:
-        IMPORT_NAME  'llmforge._llmforge'   → returns parent package 'llmforge'
-        IMPORT_FROM  '_llmforge'            → getattr(llmforge_pkg, '_llmforge')
+    ``import vectorprime._vectorprime as X`` inside cli.py is compiled to:
+        IMPORT_NAME  'vectorprime._vectorprime'   → returns parent package 'vectorprime'
+        IMPORT_FROM  '_vectorprime'            → getattr(vectorprime_pkg, '_vectorprime')
     So we must patch the *attribute* on the package object, not sys.modules.
     """
     if mock is None:
-        mock = _mock_llmforge()
-    with patch.dict(sys.modules, {"llmforge._llmforge": mock}):
-        with patch.object(_llmforge_pkg, "_llmforge", mock, create=True):
+        mock = _mock_vectorprime()
+    with patch.dict(sys.modules, {"vectorprime._vectorprime": mock}):
+        with patch.object(_vectorprime_pkg, "_vectorprime", mock, create=True):
             yield mock
 
 
@@ -79,7 +79,7 @@ def _patch_native(mock=None):
 
 class TestDivider:
     def test_returns_string_of_dashes(self):
-        from llmforge.cli import _divider
+        from vectorprime.cli import _divider
         d = _divider()
         assert set(d) == {"─"}
         assert len(d) == 33
@@ -91,7 +91,7 @@ class TestDivider:
 
 class TestBuildParser:
     def setup_method(self):
-        from llmforge.cli import build_parser
+        from vectorprime.cli import build_parser
         self.parser = build_parser()
 
     def test_profile_subcommand(self):
@@ -138,7 +138,7 @@ class TestBuildParser:
 
 class TestCmdProfile:
     def test_success_prints_json(self, capsys):
-        from llmforge.cli import cmd_profile
+        from vectorprime.cli import cmd_profile
         with _patch_native():
             cmd_profile(argparse.Namespace())
         out = capsys.readouterr().out
@@ -146,8 +146,8 @@ class TestCmdProfile:
         assert data["cpu"]["core_count"] == 8
 
     def test_runtime_error_exits_1(self, capsys):
-        from llmforge.cli import cmd_profile
-        mock = _mock_llmforge()
+        from vectorprime.cli import cmd_profile
+        mock = _mock_vectorprime()
         mock.profile_hardware.side_effect = RuntimeError("hardware probe failed")
         with _patch_native(mock):
             with pytest.raises(SystemExit) as exc:
@@ -172,14 +172,14 @@ class TestCmdOptimize:
         )
 
     def test_unknown_extension_exits_1(self, capsys):
-        from llmforge.cli import cmd_optimize
+        from vectorprime.cli import cmd_optimize
         with pytest.raises(SystemExit) as exc:
             cmd_optimize(self._args("model.bin"))
         assert exc.value.code == 1
         assert "ERROR" in capsys.readouterr().err
 
     def test_auto_detect_gguf(self, capsys, tmp_path):
-        from llmforge.cli import cmd_optimize
+        from vectorprime.cli import cmd_optimize
         model = tmp_path / "model.gguf"
         model.touch()
         with _patch_native():
@@ -188,7 +188,7 @@ class TestCmdOptimize:
         assert "LlamaCpp" in out
 
     def test_explicit_format_skips_detection(self, capsys, tmp_path):
-        from llmforge.cli import cmd_optimize
+        from vectorprime.cli import cmd_optimize
         model = tmp_path / "model.bin"
         model.touch()
         with _patch_native():
@@ -197,8 +197,8 @@ class TestCmdOptimize:
         assert "LlamaCpp" in out
 
     def test_runtime_error_exits_1(self, capsys):
-        from llmforge.cli import cmd_optimize
-        mock = _mock_llmforge()
+        from vectorprime.cli import cmd_optimize
+        mock = _mock_vectorprime()
         mock.optimize.side_effect = RuntimeError("binary not found")
         with _patch_native(mock):
             with pytest.raises(SystemExit) as exc:
@@ -206,16 +206,16 @@ class TestCmdOptimize:
         assert exc.value.code == 1
 
     def test_no_json_result_file_written(self, tmp_path):
-        """The old .llmforge_result.json file must NOT be created."""
-        from llmforge.cli import cmd_optimize
+        """The old .vectorprime_result.json file must NOT be created."""
+        from vectorprime.cli import cmd_optimize
         model = tmp_path / "model.gguf"
         model.touch()
         with _patch_native():
             cmd_optimize(self._args(str(model), fmt="gguf"))
-        assert not (tmp_path / "model.gguf.llmforge_result.json").exists()
+        assert not (tmp_path / "model.gguf.vectorprime_result.json").exists()
 
     def test_success_prints_all_fields(self, capsys, tmp_path):
-        from llmforge.cli import cmd_optimize
+        from vectorprime.cli import cmd_optimize
         model = tmp_path / "model.gguf"
         model.touch()
         with _patch_native():
@@ -226,10 +226,10 @@ class TestCmdOptimize:
 
     def test_output_path_printed_when_quantized(self, capsys, tmp_path):
         """When output_path is set on result, it should be printed."""
-        from llmforge.cli import cmd_optimize
+        from vectorprime.cli import cmd_optimize
         model = tmp_path / "model.gguf"
         model.touch()
-        mock = _mock_llmforge()
+        mock = _mock_vectorprime()
         mock.optimize.return_value.output_path = str(tmp_path / "model-optimized.gguf")
         with _patch_native(mock):
             cmd_optimize(self._args(str(model), fmt="gguf"))
@@ -238,7 +238,7 @@ class TestCmdOptimize:
 
     def test_note_printed_when_not_quantized(self, capsys, tmp_path):
         """When output_path is None (llama-quantize absent), a NOTE goes to stderr."""
-        from llmforge.cli import cmd_optimize
+        from vectorprime.cli import cmd_optimize
         model = tmp_path / "model.gguf"
         model.touch()
         with _patch_native():  # default mock has output_path = None
@@ -247,7 +247,7 @@ class TestCmdOptimize:
         assert "NOTE" in err
 
     def test_max_memory_warning_when_exceeded(self, capsys, tmp_path):
-        from llmforge.cli import cmd_optimize
+        from vectorprime.cli import cmd_optimize
         model = tmp_path / "model.gguf"
         model.touch()
         # result.peak_memory_mb = 4096, set max_memory lower
@@ -256,7 +256,7 @@ class TestCmdOptimize:
         assert "WARNING" in capsys.readouterr().err
 
     def test_max_memory_no_warning_when_within_limit(self, capsys, tmp_path):
-        from llmforge.cli import cmd_optimize
+        from vectorprime.cli import cmd_optimize
         model = tmp_path / "model.gguf"
         model.touch()
         with _patch_native():
@@ -272,37 +272,37 @@ class TestCmdOptimize:
 
 class TestMain:
     def test_dispatches_profile(self):
-        from llmforge import cli
+        from vectorprime import cli
         with patch.object(cli, "cmd_profile") as mock_cmd:
-            with patch("sys.argv", ["llmforge", "profile"]):
+            with patch("sys.argv", ["vectorprime", "profile"]):
                 cli.main()
             mock_cmd.assert_called_once()
 
     def test_dispatches_optimize(self):
-        from llmforge import cli
+        from vectorprime import cli
         with patch.object(cli, "cmd_optimize") as mock_cmd:
-            with patch("sys.argv", ["llmforge", "optimize", "model.gguf"]):
+            with patch("sys.argv", ["vectorprime", "optimize", "model.gguf"]):
                 cli.main()
             mock_cmd.assert_called_once()
 
     def test_dispatches_convert_to_onnx(self):
-        from llmforge import cli
+        from vectorprime import cli
         with patch.object(cli, "cmd_convert_to_onnx") as mock_cmd:
-            with patch("sys.argv", ["llmforge", "convert-to-onnx", "model.gguf"]):
+            with patch("sys.argv", ["vectorprime", "convert-to-onnx", "model.gguf"]):
                 cli.main()
             mock_cmd.assert_called_once()
 
     def test_dispatches_convert_to_gguf(self):
-        from llmforge import cli
+        from vectorprime import cli
         with patch.object(cli, "cmd_convert_to_gguf") as mock_cmd:
-            with patch("sys.argv", ["llmforge", "convert-to-gguf", "model.onnx"]):
+            with patch("sys.argv", ["vectorprime", "convert-to-gguf", "model.onnx"]):
                 cli.main()
             mock_cmd.assert_called_once()
 
     def test_no_subcommand_exits(self):
-        with patch("sys.argv", ["llmforge"]):
+        with patch("sys.argv", ["vectorprime"]):
             with pytest.raises(SystemExit):
-                from llmforge import cli
+                from vectorprime import cli
                 cli.main()
 
 
@@ -312,7 +312,7 @@ class TestMain:
 
 class TestOnnxRunnerError:
     def test_writes_json_error_and_exits(self, capsys):
-        from llmforge.onnx_runner import _error
+        from vectorprime.onnx_runner import _error
         with pytest.raises(SystemExit) as exc:
             _error("something went wrong")
         assert exc.value.code == 1
@@ -326,14 +326,14 @@ class TestOnnxRunnerError:
 
 class TestOnnxRunnerCheckMode:
     def test_exits_0_when_onnxruntime_available(self):
-        from llmforge.onnx_runner import _check_mode
+        from vectorprime.onnx_runner import _check_mode
         with patch.dict(sys.modules, {"onnxruntime": MagicMock()}):
             with pytest.raises(SystemExit) as exc:
                 _check_mode()
         assert exc.value.code == 0
 
     def test_exits_nonzero_when_onnxruntime_absent(self, capsys):
-        from llmforge.onnx_runner import _check_mode
+        from vectorprime.onnx_runner import _check_mode
         # Setting the module to None makes "import onnxruntime" raise ImportError
         with patch.dict(sys.modules, {"onnxruntime": None}):
             with pytest.raises(SystemExit) as exc:
@@ -350,7 +350,7 @@ class TestOnnxRunnerCheckMode:
 class TestOrtDtypeToNumpy:
     def test_known_types(self):
         import numpy as np
-        from llmforge.onnx_runner import _ort_dtype_to_numpy
+        from vectorprime.onnx_runner import _ort_dtype_to_numpy
 
         assert _ort_dtype_to_numpy("tensor(float)") is np.float32
         assert _ort_dtype_to_numpy("tensor(double)") is np.float64
@@ -363,7 +363,7 @@ class TestOrtDtypeToNumpy:
 
     def test_unknown_type_defaults_to_float32(self):
         import numpy as np
-        from llmforge.onnx_runner import _ort_dtype_to_numpy
+        from vectorprime.onnx_runner import _ort_dtype_to_numpy
 
         assert _ort_dtype_to_numpy("tensor(bfloat16)") is np.float32
         assert _ort_dtype_to_numpy("unknown") is np.float32
@@ -396,7 +396,7 @@ class TestOnnxRunnerRun:
         return mock_ort
 
     def test_success_outputs_json(self, capsys):
-        from llmforge.onnx_runner import _run
+        from vectorprime.onnx_runner import _run
         with patch.dict(sys.modules, {"onnxruntime": self._make_mock_ort(), "numpy": __import__("numpy")}):
             _run({"model_path": "fake.onnx", "threads": 1, "prompt_tokens": 5})
         out = capsys.readouterr().out
@@ -406,7 +406,7 @@ class TestOnnxRunnerRun:
         assert "peak_memory_mb" in data
 
     def test_uses_cpu_fallback_when_provider_unavailable(self, capsys):
-        from llmforge.onnx_runner import _run
+        from vectorprime.onnx_runner import _run
         mock_ort = self._make_mock_ort()
         mock_ort.get_available_providers.return_value = ["CPUExecutionProvider"]
         with patch.dict(sys.modules, {"onnxruntime": mock_ort, "numpy": __import__("numpy")}):
@@ -420,7 +420,7 @@ class TestOnnxRunnerRun:
         assert "tokens_per_sec" in data
 
     def test_load_failure_exits_nonzero(self, capsys):
-        from llmforge.onnx_runner import _run
+        from vectorprime.onnx_runner import _run
         mock_ort = self._make_mock_ort()
         mock_ort.InferenceSession.side_effect = Exception("bad model file")
         with patch.dict(sys.modules, {"onnxruntime": mock_ort, "numpy": __import__("numpy")}):
@@ -431,7 +431,7 @@ class TestOnnxRunnerRun:
         assert "error" in payload
 
     def test_inference_failure_exits_nonzero(self, capsys):
-        from llmforge.onnx_runner import _run
+        from vectorprime.onnx_runner import _run
         mock_ort = self._make_mock_ort(inference_error=RuntimeError("CUDA OOM"))
         with patch.dict(sys.modules, {"onnxruntime": mock_ort, "numpy": __import__("numpy")}):
             with pytest.raises(SystemExit) as exc:
@@ -441,7 +441,7 @@ class TestOnnxRunnerRun:
     def test_dynamic_shapes_become_1(self, capsys):
         """Non-integer / zero dimensions in input shape are replaced with 1."""
         import numpy as np
-        from llmforge.onnx_runner import _run
+        from vectorprime.onnx_runner import _run
 
         mock_inp = MagicMock()
         mock_inp.name = "input_ids"
@@ -469,14 +469,14 @@ class TestOnnxRunnerRun:
 
 class TestOnnxRunnerMain:
     def test_check_flag_calls_check_mode(self):
-        from llmforge import onnx_runner
+        from vectorprime import onnx_runner
         with patch.object(onnx_runner, "_check_mode") as mock_cm:
             with patch("sys.argv", ["onnx_runner.py", "--check"]):
                 onnx_runner.main()
         mock_cm.assert_called_once()
 
     def test_valid_stdin_calls_run(self):
-        from llmforge import onnx_runner
+        from vectorprime import onnx_runner
         payload = json.dumps({"model_path": "m.onnx", "threads": 1, "prompt_tokens": 5})
         with patch.object(onnx_runner, "_run") as mock_run:
             with patch("sys.argv", ["onnx_runner.py"]):
@@ -486,7 +486,7 @@ class TestOnnxRunnerMain:
         assert mock_run.call_args[0][0]["model_path"] == "m.onnx"
 
     def test_invalid_stdin_json_exits(self, capsys):
-        from llmforge import onnx_runner
+        from vectorprime import onnx_runner
         with patch("sys.argv", ["onnx_runner.py"]):
             with patch("sys.stdin", StringIO("not valid json{{{")):
                 with pytest.raises(SystemExit):
@@ -500,19 +500,19 @@ class TestOnnxRunnerMain:
 
 class TestReplaceExt:
     def test_replaces_gguf_with_onnx(self):
-        from llmforge.cli import _replace_ext
+        from vectorprime.cli import _replace_ext
         assert _replace_ext("model.gguf", ".onnx") == "model.onnx"
 
     def test_replaces_onnx_with_gguf(self):
-        from llmforge.cli import _replace_ext
+        from vectorprime.cli import _replace_ext
         assert _replace_ext("model.onnx", ".gguf") == "model.gguf"
 
     def test_preserves_directory(self):
-        from llmforge.cli import _replace_ext
+        from vectorprime.cli import _replace_ext
         assert _replace_ext("/data/models/llama.gguf", ".onnx") == "/data/models/llama.onnx"
 
     def test_no_extension(self):
-        from llmforge.cli import _replace_ext
+        from vectorprime.cli import _replace_ext
         assert _replace_ext("modelfile", ".onnx") == "modelfile.onnx"
 
 
@@ -522,7 +522,7 @@ class TestReplaceExt:
 
 class TestBuildParserConvert:
     def setup_method(self):
-        from llmforge.cli import build_parser
+        from vectorprime.cli import build_parser
         self.parser = build_parser()
 
     def test_convert_to_onnx_required_arg(self):
@@ -553,20 +553,20 @@ class TestCmdConvertToOnnx:
         return argparse.Namespace(input_path=input_path, output=output)
 
     def test_success_prints_result(self, capsys, tmp_path):
-        from llmforge.cli import cmd_convert_to_onnx
-        mock = _mock_llmforge()
+        from vectorprime.cli import cmd_convert_to_onnx
+        mock = _mock_vectorprime()
         out_path = str(tmp_path / "model.onnx")
         mock.convert_gguf_to_onnx.return_value = out_path
         with _patch_native(mock):
             cmd_convert_to_onnx(self._args(str(tmp_path / "model.gguf")))
         out = capsys.readouterr().out
-        assert "LLMForge Conversion Result" in out
+        assert "VectorPrime Conversion Result" in out
         assert "model.onnx" in out
 
     def test_default_output_derived_from_input(self, capsys, tmp_path):
         """When --output is omitted the output path gets .onnx extension."""
-        from llmforge.cli import cmd_convert_to_onnx
-        mock = _mock_llmforge()
+        from vectorprime.cli import cmd_convert_to_onnx
+        mock = _mock_vectorprime()
         input_path = str(tmp_path / "model.gguf")
         expected_out = str(tmp_path / "model.onnx")
         mock.convert_gguf_to_onnx.return_value = expected_out
@@ -576,8 +576,8 @@ class TestCmdConvertToOnnx:
         mock.convert_gguf_to_onnx.assert_called_once_with(input_path, expected_out)
 
     def test_explicit_output_passed_through(self, capsys, tmp_path):
-        from llmforge.cli import cmd_convert_to_onnx
-        mock = _mock_llmforge()
+        from vectorprime.cli import cmd_convert_to_onnx
+        mock = _mock_vectorprime()
         out_path = "/custom/output.onnx"
         mock.convert_gguf_to_onnx.return_value = out_path
         with _patch_native(mock):
@@ -585,8 +585,8 @@ class TestCmdConvertToOnnx:
         mock.convert_gguf_to_onnx.assert_called_once_with("model.gguf", out_path)
 
     def test_runtime_error_exits_1(self, capsys):
-        from llmforge.cli import cmd_convert_to_onnx
-        mock = _mock_llmforge()
+        from vectorprime.cli import cmd_convert_to_onnx
+        mock = _mock_vectorprime()
         mock.convert_gguf_to_onnx.side_effect = RuntimeError("python3 not found")
         with _patch_native(mock):
             with pytest.raises(SystemExit) as exc:
@@ -604,19 +604,19 @@ class TestCmdConvertToGguf:
         return argparse.Namespace(input_path=input_path, output=output)
 
     def test_success_prints_result(self, capsys, tmp_path):
-        from llmforge.cli import cmd_convert_to_gguf
-        mock = _mock_llmforge()
+        from vectorprime.cli import cmd_convert_to_gguf
+        mock = _mock_vectorprime()
         out_path = str(tmp_path / "model.gguf")
         mock.convert_onnx_to_gguf.return_value = out_path
         with _patch_native(mock):
             cmd_convert_to_gguf(self._args(str(tmp_path / "model.onnx")))
         out = capsys.readouterr().out
-        assert "LLMForge Conversion Result" in out
+        assert "VectorPrime Conversion Result" in out
         assert "model.gguf" in out
 
     def test_default_output_derived_from_input(self, capsys, tmp_path):
-        from llmforge.cli import cmd_convert_to_gguf
-        mock = _mock_llmforge()
+        from vectorprime.cli import cmd_convert_to_gguf
+        mock = _mock_vectorprime()
         input_path = str(tmp_path / "model.onnx")
         expected_out = str(tmp_path / "model.gguf")
         mock.convert_onnx_to_gguf.return_value = expected_out
@@ -625,8 +625,8 @@ class TestCmdConvertToGguf:
         mock.convert_onnx_to_gguf.assert_called_once_with(input_path, expected_out)
 
     def test_explicit_output_passed_through(self, capsys, tmp_path):
-        from llmforge.cli import cmd_convert_to_gguf
-        mock = _mock_llmforge()
+        from vectorprime.cli import cmd_convert_to_gguf
+        mock = _mock_vectorprime()
         out_path = "/custom/output.gguf"
         mock.convert_onnx_to_gguf.return_value = out_path
         with _patch_native(mock):
@@ -634,8 +634,8 @@ class TestCmdConvertToGguf:
         mock.convert_onnx_to_gguf.assert_called_once_with("model.onnx", out_path)
 
     def test_runtime_error_exits_1(self, capsys):
-        from llmforge.cli import cmd_convert_to_gguf
-        mock = _mock_llmforge()
+        from vectorprime.cli import cmd_convert_to_gguf
+        mock = _mock_vectorprime()
         mock.convert_onnx_to_gguf.side_effect = RuntimeError("onnx not installed")
         with _patch_native(mock):
             with pytest.raises(SystemExit) as exc:
@@ -649,18 +649,18 @@ class TestCmdConvertToGguf:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestAnalyzeModelMocked:
-    """Verify that _mock_llmforge exposes analyze_model and its return dict."""
+    """Verify that _mock_vectorprime exposes analyze_model and its return dict."""
 
     def test_analyze_model_attribute_exists(self):
         """The mock must have an analyze_model attribute (mirrors the native module)."""
-        mock = _mock_llmforge()
+        mock = _mock_vectorprime()
         assert hasattr(mock, "analyze_model"), (
-            "analyze_model missing from _mock_llmforge — update mock when adding new bindings"
+            "analyze_model missing from _mock_vectorprime — update mock when adding new bindings"
         )
 
     def test_analyze_model_returns_dict_with_required_keys(self):
         """The mock return value must contain all ModelIR fields expected by callers."""
-        mock = _mock_llmforge()
+        mock = _mock_vectorprime()
         result = mock.analyze_model("some_path.gguf")
         required_keys = {"format", "param_count", "architecture", "context_length", "layer_count"}
         assert required_keys.issubset(result.keys()), (
@@ -669,13 +669,13 @@ class TestAnalyzeModelMocked:
 
     def test_analyze_model_format_field(self):
         """format must be one of the known format strings."""
-        mock = _mock_llmforge()
+        mock = _mock_vectorprime()
         result = mock.analyze_model("model.gguf")
         assert result["format"] in {"gguf", "onnx"}
 
     def test_analyze_model_via_native_module(self):
-        """verify analyze_model is reachable as llmforge.analyze_model in a live import."""
-        import llmforge
-        assert hasattr(llmforge, "analyze_model"), (
-            "analyze_model not re-exported from llmforge/__init__.py"
+        """verify analyze_model is reachable as vectorprime.analyze_model in a live import."""
+        import vectorprime
+        assert hasattr(vectorprime, "analyze_model"), (
+            "analyze_model not re-exported from vectorprime/__init__.py"
         )
