@@ -38,17 +38,26 @@ struct ConvertResponse {
     error: Option<String>,
 }
 
-/// Locate a Python runner script.
+/// Locate a Python runner script using all available strategies.
 ///
-/// Mirrors the lookup strategy in [`crate::onnx::OnnxAdapter::find_runner`].
+/// Search order (first match wins):
+///
+/// 1. Next to the current executable — catches future installed layouts.
+/// 2. Walk up from the current working directory — works when running the
+///    CLI from the workspace root during development (the common case).
+/// 3. Walk up from `CARGO_MANIFEST_DIR` — set by cargo during `cargo test`
+///    and `cargo build`; not available at runtime.
+/// 4. Ask Python where the `llmforge` package is installed — the most robust
+///    path for `pip install` / `maturin develop` deployments.
 fn find_runner(workspace_rel_path: &str) -> Option<PathBuf> {
+    let script_name = workspace_rel_path
+        .rsplit('/')
+        .next()
+        .unwrap_or(workspace_rel_path);
+
     // 1. Next to the current executable (installed / maturin layout).
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
-            let script_name = workspace_rel_path
-                .rsplit('/')
-                .next()
-                .unwrap_or(workspace_rel_path);
             let candidate = parent.join("python").join("llmforge").join(script_name);
             if candidate.exists() {
                 return Some(candidate);
@@ -56,7 +65,22 @@ fn find_runner(workspace_rel_path: &str) -> Option<PathBuf> {
         }
     }
 
-    // 2. Walk up from CARGO_MANIFEST_DIR (dev / test layout).
+    // 2. Walk up from the current working directory.
+    //    This covers running `llmforge …` from inside the workspace root.
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut dir = cwd;
+        for _ in 0..6 {
+            let candidate = dir.join(workspace_rel_path);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+    }
+
+    // 3. Walk up from CARGO_MANIFEST_DIR (set only during cargo test/build).
     if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
         let mut dir = PathBuf::from(manifest);
         for _ in 0..5 {
@@ -66,6 +90,28 @@ fn find_runner(workspace_rel_path: &str) -> Option<PathBuf> {
             }
             if !dir.pop() {
                 break;
+            }
+        }
+    }
+
+    // 4. Ask Python where the installed `llmforge` package lives.
+    //    Works for `pip install` and `maturin develop` deployments where the
+    //    runner scripts sit alongside `__init__.py` in site-packages.
+    if let Ok(python) = which::which("python3") {
+        let snippet = format!(
+            "import llmforge, os; print(os.path.join(os.path.dirname(llmforge.__file__), '{}'))",
+            script_name
+        );
+        if let Ok(out) = std::process::Command::new(&python)
+            .args(["-c", &snippet])
+            .output()
+        {
+            if out.status.success() {
+                let path_str = String::from_utf8_lossy(&out.stdout);
+                let candidate = PathBuf::from(path_str.trim());
+                if candidate.exists() {
+                    return Some(candidate);
+                }
             }
         }
     }
