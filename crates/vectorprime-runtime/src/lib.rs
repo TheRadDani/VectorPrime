@@ -17,14 +17,18 @@
 pub mod convert;
 pub mod dispatch;
 pub mod llamacpp;
+pub mod ollama;
 pub mod onnx;
 pub mod tensorrt;
+pub mod vllm;
 
 pub use convert::{gguf_to_onnx, onnx_to_gguf};
 pub use dispatch::dispatch;
 pub use llamacpp::LlamaCppAdapter;
+pub use ollama::OllamaAdapter;
 pub use onnx::OnnxAdapter;
 pub use tensorrt::TensorRtAdapter;
+pub use vllm::VllmAdapter;
 
 use std::collections::HashMap;
 
@@ -46,6 +50,8 @@ impl AdapterRegistry {
         adapters.insert(RuntimeKind::LlamaCpp, Box::new(LlamaCppAdapter::new()));
         adapters.insert(RuntimeKind::OnnxRuntime, Box::new(OnnxAdapter::new()));
         adapters.insert(RuntimeKind::TensorRT, Box::new(TensorRtAdapter::new()));
+        adapters.insert(RuntimeKind::Ollama, Box::new(OllamaAdapter::new()));
+        adapters.insert(RuntimeKind::Vllm, Box::new(VllmAdapter::new()));
         Self { adapters }
     }
 
@@ -105,6 +111,8 @@ mod tests {
         assert!(registry.get_mut(&RuntimeKind::LlamaCpp).is_some());
         assert!(registry.get_mut(&RuntimeKind::OnnxRuntime).is_some());
         assert!(registry.get_mut(&RuntimeKind::TensorRT).is_some());
+        assert!(registry.get_mut(&RuntimeKind::Ollama).is_some());
+        assert!(registry.get_mut(&RuntimeKind::Vllm).is_some());
     }
 
     #[test]
@@ -133,6 +141,29 @@ mod tests {
         let model = sample_model(); // GGUF fixture — always wrong for ONNX adapter
         let result = dispatch(&mut registry, &config, &model, "hello");
         assert!(result.is_err(), "expected Err from OnnxAdapter dispatch");
+    }
+
+    #[test]
+    fn test_dispatch_not_installed_ollama() {
+        // When ollama is absent, dispatch must return Err, never panic.
+        let mut registry = AdapterRegistry::new();
+        let config = sample_config(RuntimeKind::Ollama);
+        let model = sample_model();
+        let result = dispatch(&mut registry, &config, &model, "hello");
+        // If ollama is installed the model file won't exist, so it still errors.
+        assert!(result.is_err(), "expected Err from OllamaAdapter dispatch");
+    }
+
+    #[test]
+    fn test_dispatch_not_installed_vllm() {
+        // When python3/vllm is absent, dispatch must return Err, never panic.
+        let mut registry = AdapterRegistry::new();
+        let config = sample_config(RuntimeKind::Vllm);
+        let model = sample_model();
+        let result = dispatch(&mut registry, &config, &model, "hello");
+        // Either python3 absent → NotInstalled, or vllm not importable → NotInstalled,
+        // or model file doesn't exist → ModelLoadFailed. All paths must return Err.
+        assert!(result.is_err(), "expected Err from VllmAdapter dispatch");
     }
 
     #[test]

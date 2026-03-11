@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: ["**"]
+    tags: ["v*"]
   pull_request:
     branches: ["**"]
 
@@ -230,7 +231,28 @@ jobs:
           path: coverage/python/
 
   # ─────────────────────────────────────────────
-  # Job 5: Publish release
-  # After all test passes, publish release to PyPI and GitHub Packages when a new tag is pushed.
-  #
-  #publish:
+  # Job 5: Publish to PyPI
+  # Runs only on version tag pushes (v*). All four
+  # test/build jobs must pass before publish starts.
+  # Uses Docker BuildKit --secret to pass PYPI_TOKEN
+  # to the Dockerfile publisher stage without leaking
+  # the token into image layers or build logs.
+  # ─────────────────────────────────────────────
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [rust-tests, python-tests, build-check, coverage]
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and publish via Docker
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          docker build --secret id=pypi_token,env=PYPI_TOKEN -t vectorprime-publisher .

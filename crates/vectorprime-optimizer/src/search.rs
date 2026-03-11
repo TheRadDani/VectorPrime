@@ -148,6 +148,10 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
     let workload = classify_workload(model);
 
     // Per-format runtime + quantization pairings, ordered by workload type.
+    //
+    // Ollama supports GGUF models on any hardware (wraps llama.cpp internally).
+    // vLLM supports ONNX/HuggingFace models and requires a GPU for meaningful
+    // performance; it prefers F16/Q8_0 precision.
     let combos: Vec<(RuntimeKind, QuantizationStrategy)> = match model.format {
         ModelFormat::GGUF => {
             let mut quants = vec![
@@ -173,10 +177,17 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
                     // Default ordering: aggressive quants first (Q4_K_M already at front).
                 }
             }
-            quants
-                .into_iter()
-                .map(|q| (RuntimeKind::LlamaCpp, q))
-                .collect()
+
+            // Both LlamaCpp and Ollama support GGUF on any hardware.
+            // Ollama manages its own llama.cpp backend; interleave the same
+            // quantization options under both runtimes so the benchmarker can
+            // pick the faster of the two.
+            let mut combos: Vec<(RuntimeKind, QuantizationStrategy)> = Vec::new();
+            for q in &quants {
+                combos.push((RuntimeKind::LlamaCpp, q.clone()));
+                combos.push((RuntimeKind::Ollama, q.clone()));
+            }
+            combos
         }
 
         ModelFormat::ONNX => {
@@ -188,6 +199,13 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
             if is_nvidia_gpu(hw) {
                 v.push((RuntimeKind::TensorRT, QuantizationStrategy::F16));
                 v.push((RuntimeKind::TensorRT, QuantizationStrategy::Int8));
+            }
+            // vLLM is GPU-accelerated; add it when any GPU is present.
+            // It only meaningfully competes on F16/Q8_0 — sub-8-bit quantizations
+            // fall back to float16 inside vLLM anyway (see vllm.rs).
+            if hw.gpu.is_some() {
+                v.push((RuntimeKind::Vllm, QuantizationStrategy::F16));
+                v.push((RuntimeKind::Vllm, QuantizationStrategy::Q8_0));
             }
             // For memory-bound ONNX workloads, move Int8 ahead of F16.
             if matches!(workload, WorkloadType::MemoryBound) {
@@ -342,16 +360,18 @@ mod tests {
     }
 
     #[test]
-    fn test_gguf_candidates_only_llamacpp() {
+    fn test_gguf_candidates_only_llamacpp_and_ollama() {
+        // GGUF format should produce candidates for LlamaCpp and Ollama only —
+        // not OnnxRuntime, TensorRT, or Vllm.
         let hw = cpu_only_hw(8);
         let model = gguf_model();
         let candidates = generate_candidates(&hw, &model);
         assert!(!candidates.is_empty());
         for c in &candidates {
-            assert_eq!(
-                c.runtime,
-                RuntimeKind::LlamaCpp,
-                "non-llama runtime in GGUF candidates"
+            assert!(
+                c.runtime == RuntimeKind::LlamaCpp || c.runtime == RuntimeKind::Ollama,
+                "unexpected runtime {:?} in GGUF candidates (expected LlamaCpp or Ollama)",
+                c.runtime
             );
         }
     }

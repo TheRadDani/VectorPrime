@@ -37,6 +37,11 @@ pub enum RuntimeKind {
     LlamaCpp,
     OnnxRuntime,
     TensorRT,
+    /// Ollama runtime — wraps llama.cpp; supports GGUF models on CPU and GPU.
+    Ollama,
+    /// vLLM runtime — GPU-accelerated inference via Python; supports ONNX and
+    /// HuggingFace models on NVIDIA hardware.
+    Vllm,
 }
 
 /// GPU vendor, used to make runtime-eligibility decisions without hardcoding
