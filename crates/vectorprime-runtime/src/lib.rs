@@ -89,6 +89,13 @@ mod tests {
             path: PathBuf::from("/tmp/test.gguf"),
             format: ModelFormat::GGUF,
             param_count: None,
+            hidden_size: None,
+            attention_head_count: None,
+            attention_head_count_kv: None,
+            feed_forward_length: None,
+            kv_cache_size_mb: None,
+            memory_footprint_mb: None,
+            flops_per_token: None,
         }
     }
 

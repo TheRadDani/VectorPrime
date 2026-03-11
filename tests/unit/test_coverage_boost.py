@@ -82,7 +82,7 @@ class TestDivider:
         from vectorprime.cli import _divider
         d = _divider()
         assert set(d) == {"─"}
-        assert len(d) == 33
+        assert len(d) == 41
 
 
 # ─────────────────────────────────────────────────────────────────────────────

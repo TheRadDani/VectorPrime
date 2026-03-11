@@ -78,6 +78,38 @@ pub fn estimate_max_gpu_layers(gpu: &GpuInfo, model: &ModelInfo) -> u32 {
     }
 }
 
+/// Classifies a model's inference bottleneck based on architecture metrics.
+///
+/// - `MemoryBound`: large KV cache or narrow FFN relative to hidden size
+///   (attention dominates). Favours aggressive quantization.
+/// - `ComputeBound`: wide FFN (FFN >> 8× hidden, e.g. Mixtral MoE). Favours
+///   precision-preserving formats when tensor cores are available.
+/// - `Balanced`: in between; apply default heuristics.
+enum WorkloadType {
+    MemoryBound,
+    ComputeBound,
+    Balanced,
+}
+
+/// Classify the workload type from model architecture metrics.
+///
+/// Returns `Balanced` when the required fields are absent.
+fn classify_workload(model: &ModelInfo) -> WorkloadType {
+    match (model.feed_forward_length, model.hidden_size) {
+        (Some(ffn), Some(hidden)) if hidden > 0 => {
+            let ffn_ratio = ffn / hidden as u64;
+            if ffn_ratio >= 8 {
+                WorkloadType::ComputeBound // FFN >> 8× hidden (MoE-style)
+            } else if ffn_ratio <= 2 {
+                WorkloadType::MemoryBound // attention dominates
+            } else {
+                WorkloadType::Balanced
+            }
+        }
+        _ => WorkloadType::Balanced,
+    }
+}
+
 /// Generate the cross-product of (runtime × quantization × threads × gpu_layers)
 /// pruned to configs that are plausible on the given hardware.
 pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<RuntimeConfig> {
@@ -110,17 +142,42 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
         vec![0]
     };
 
-    // Per-format runtime + quantization pairings.
+    // Classify the workload to influence candidate ordering.
+    // All quant/runtime combos are still generated; ordering only affects
+    // which candidates are evaluated first (the scorer picks the final winner).
+    let workload = classify_workload(model);
+
+    // Per-format runtime + quantization pairings, ordered by workload type.
     let combos: Vec<(RuntimeKind, QuantizationStrategy)> = match model.format {
-        ModelFormat::GGUF => [
-            QuantizationStrategy::Q4_K_M,
-            QuantizationStrategy::Q4_0,
-            QuantizationStrategy::Q8_0,
-            QuantizationStrategy::F16,
-        ]
-        .into_iter()
-        .map(|q| (RuntimeKind::LlamaCpp, q))
-        .collect(),
+        ModelFormat::GGUF => {
+            let mut quants = vec![
+                QuantizationStrategy::Q4_K_M,
+                QuantizationStrategy::Q4_0,
+                QuantizationStrategy::Q8_0,
+                QuantizationStrategy::F16,
+            ];
+            // Reorder by workload: memory-bound prefers aggressive quants (already
+            // first). Compute-bound prefers precision-preserving formats.
+            match workload {
+                WorkloadType::ComputeBound => {
+                    // Move F16 and Q8_0 to the front so the scorer sees them first.
+                    quants.sort_by_key(|q| match q {
+                        QuantizationStrategy::F16 => 0,
+                        QuantizationStrategy::Q8_0 => 1,
+                        QuantizationStrategy::Q4_K_M => 2,
+                        QuantizationStrategy::Q4_0 => 3,
+                        _ => 4,
+                    });
+                }
+                WorkloadType::MemoryBound | WorkloadType::Balanced => {
+                    // Default ordering: aggressive quants first (Q4_K_M already at front).
+                }
+            }
+            quants
+                .into_iter()
+                .map(|q| (RuntimeKind::LlamaCpp, q))
+                .collect()
+        }
 
         ModelFormat::ONNX => {
             let mut v: Vec<(RuntimeKind, QuantizationStrategy)> = vec![
@@ -132,8 +189,32 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
                 v.push((RuntimeKind::TensorRT, QuantizationStrategy::F16));
                 v.push((RuntimeKind::TensorRT, QuantizationStrategy::Int8));
             }
+            // For memory-bound ONNX workloads, move Int8 ahead of F16.
+            if matches!(workload, WorkloadType::MemoryBound) {
+                v.sort_by_key(|(rt, q)| match (rt, q) {
+                    (_, QuantizationStrategy::Int8 | QuantizationStrategy::Int4) => 0,
+                    _ => 1,
+                });
+            }
             v
         }
+    };
+
+    // KV-cache-aware batch sizing: reduce batch when KV cache pressure is high.
+    // A full-context KV cache consuming > 30% of VRAM leaves little room for
+    // activations, so we halve the batch to reduce runtime memory pressure.
+    let base_batch_size: u32 = 512;
+    let batch_size = if let (Some(kv_mb), Some(vram_mb)) = (
+        model.kv_cache_size_mb,
+        hw.gpu.as_ref().map(|g| g.vram_mb as f64),
+    ) {
+        if kv_mb > vram_mb * 0.3 {
+            (base_batch_size / 2).max(128)
+        } else {
+            base_batch_size
+        }
+    } else {
+        base_batch_size
     };
 
     let vram_budget_mb = hw.gpu.as_ref().map(|g| g.vram_mb as f64 * 0.9);
@@ -153,7 +234,7 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
                     runtime: runtime.clone(),
                     quantization: quant.clone(),
                     threads,
-                    batch_size: 512,
+                    batch_size,
                     gpu_layers,
                 });
             }
@@ -235,6 +316,13 @@ mod tests {
             path: PathBuf::from("/tmp/model.gguf"),
             format: ModelFormat::GGUF,
             param_count: Some(7_000_000_000),
+            hidden_size: None,
+            attention_head_count: None,
+            attention_head_count_kv: None,
+            feed_forward_length: None,
+            kv_cache_size_mb: None,
+            memory_footprint_mb: None,
+            flops_per_token: None,
         }
     }
 
@@ -243,6 +331,13 @@ mod tests {
             path: PathBuf::from("/tmp/model.onnx"),
             format: ModelFormat::ONNX,
             param_count: Some(1_000_000_000),
+            hidden_size: None,
+            attention_head_count: None,
+            attention_head_count_kv: None,
+            feed_forward_length: None,
+            kv_cache_size_mb: None,
+            memory_footprint_mb: None,
+            flops_per_token: None,
         }
     }
 
@@ -367,6 +462,13 @@ mod tests {
             path: PathBuf::from("/tmp/m.gguf"),
             format: ModelFormat::GGUF,
             param_count: Some(7_000_000_000),
+            hidden_size: None,
+            attention_head_count: None,
+            attention_head_count_kv: None,
+            feed_forward_length: None,
+            kv_cache_size_mb: None,
+            memory_footprint_mb: None,
+            flops_per_token: None,
         };
         let max = estimate_max_gpu_layers(&gpu, &model);
         assert!(max > 0, "should produce non-zero layer estimate");
@@ -385,6 +487,13 @@ mod tests {
             path: PathBuf::from("/tmp/m.onnx"),
             format: ModelFormat::ONNX,
             param_count: None, // unknown — triggers tier fallback
+            hidden_size: None,
+            attention_head_count: None,
+            attention_head_count_kv: None,
+            feed_forward_length: None,
+            kv_cache_size_mb: None,
+            memory_footprint_mb: None,
+            flops_per_token: None,
         };
 
         assert_eq!(estimate_max_gpu_layers(&make_gpu(2048), &model), 16);

@@ -271,6 +271,13 @@ fn optimize(
         path: path.clone(),
         format: fmt,
         param_count,
+        hidden_size: model_ir.as_ref().and_then(|ir| ir.hidden_size),
+        attention_head_count: model_ir.as_ref().and_then(|ir| ir.attention_head_count),
+        attention_head_count_kv: model_ir.as_ref().and_then(|ir| ir.attention_head_count_kv),
+        feed_forward_length: model_ir.as_ref().and_then(|ir| ir.feed_forward_length),
+        kv_cache_size_mb: model_ir.as_ref().and_then(|ir| ir.kv_cache_size_mb),
+        memory_footprint_mb: model_ir.as_ref().and_then(|ir| ir.memory_footprint_mb),
+        flops_per_token: model_ir.as_ref().and_then(|ir| ir.flops_per_token),
     };
 
     // Auto-detect host hardware, then apply the optional GPU override.
@@ -423,6 +430,13 @@ fn analyze_model(py: Python<'_>, model_path: &str) -> PyResult<PyObject> {
     dict.set_item("architecture", ir.architecture)?;
     dict.set_item("context_length", ir.context_length)?;
     dict.set_item("layer_count", ir.layer_count)?;
+    dict.set_item("hidden_size", ir.hidden_size)?;
+    dict.set_item("attention_head_count", ir.attention_head_count)?;
+    dict.set_item("attention_head_count_kv", ir.attention_head_count_kv)?;
+    dict.set_item("feed_forward_length", ir.feed_forward_length)?;
+    dict.set_item("kv_cache_size_mb", ir.kv_cache_size_mb)?;
+    dict.set_item("memory_footprint_mb", ir.memory_footprint_mb)?;
+    dict.set_item("flops_per_token", ir.flops_per_token)?;
 
     Ok(dict.into())
 }

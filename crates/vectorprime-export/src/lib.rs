@@ -212,6 +212,13 @@ mod tests {
             path: path.to_path_buf(),
             format: ModelFormat::GGUF,
             param_count: Some(7_000_000_000),
+            hidden_size: None,
+            attention_head_count: None,
+            attention_head_count_kv: None,
+            feed_forward_length: None,
+            kv_cache_size_mb: None,
+            memory_footprint_mb: None,
+            flops_per_token: None,
         }
     }
 

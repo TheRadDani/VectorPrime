@@ -273,6 +273,13 @@ mod tests {
             path: PathBuf::from("/tmp/model.onnx"),
             format: ModelFormat::ONNX,
             param_count: None,
+            hidden_size: None,
+            attention_head_count: None,
+            attention_head_count_kv: None,
+            feed_forward_length: None,
+            kv_cache_size_mb: None,
+            memory_footprint_mb: None,
+            flops_per_token: None,
         };
         let err = adapter.load_model(&model).unwrap_err();
         let msg = err.to_string();
@@ -295,6 +302,13 @@ mod tests {
             path: tmp.path().to_path_buf(),
             format: ModelFormat::GGUF,
             param_count: None,
+            hidden_size: None,
+            attention_head_count: None,
+            attention_head_count_kv: None,
+            feed_forward_length: None,
+            kv_cache_size_mb: None,
+            memory_footprint_mb: None,
+            flops_per_token: None,
         };
         let err = adapter.load_model(&model).unwrap_err();
         let msg = err.to_string();

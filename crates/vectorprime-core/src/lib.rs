@@ -103,12 +103,31 @@ pub struct HardwareProfile {
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// Metadata about the model file under optimization.
+///
+/// All fields beyond `path`, `format`, and `param_count` are optional and
+/// populated from the model IR when the file can be parsed. Downstream
+/// components must never require them to be `Some`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
     pub path: PathBuf,
     pub format: ModelFormat,
     /// Parameter count when known (e.g. 7_000_000_000 for a 7B model).
     pub param_count: Option<u64>,
+    // ── Model architecture metrics (all Optional; absent = unknown) ───────────
+    /// Embedding dimension (hidden size).
+    pub hidden_size: Option<u32>,
+    /// Number of query attention heads.
+    pub attention_head_count: Option<u32>,
+    /// Number of KV heads (GQA/MQA); falls back to `attention_head_count` for standard MHA.
+    pub attention_head_count_kv: Option<u32>,
+    /// FFN intermediate layer size.
+    pub feed_forward_length: Option<u64>,
+    /// Estimated KV cache size in MB at FP16 for the full context length (upper bound).
+    pub kv_cache_size_mb: Option<f64>,
+    /// Estimated model memory footprint in MB at FP16 (2 bytes/param).
+    pub memory_footprint_mb: Option<f64>,
+    /// Estimated FLOPs per output token (`2 × param_count`).
+    pub flops_per_token: Option<f64>,
 }
 
 /// A concrete runtime configuration to be benchmarked.
@@ -284,6 +303,13 @@ mod tests {
             path: PathBuf::from("/models/llama3.gguf"),
             format: ModelFormat::GGUF,
             param_count: Some(7_000_000_000),
+            hidden_size: None,
+            attention_head_count: None,
+            attention_head_count_kv: None,
+            feed_forward_length: None,
+            kv_cache_size_mb: None,
+            memory_footprint_mb: None,
+            flops_per_token: None,
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("GGUF"));

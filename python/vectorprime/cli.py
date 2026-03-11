@@ -14,7 +14,81 @@ def detect_format(path: str) -> str:
 
 
 def _divider() -> str:
-    return "─" * 33
+    return "─" * 41
+
+
+def _fmt_params(p: int) -> str:
+    """Format a parameter count as a human-readable string (e.g. '7.0 B')."""
+    if p >= 1_000_000_000:
+        return f"{p / 1e9:.1f} B"
+    if p >= 1_000_000:
+        return f"{p / 1e6:.1f} M"
+    return str(p)
+
+
+def _fmt_flops(f: float) -> str:
+    """Format a FLOPs count as a human-readable string (e.g. '14.0 T')."""
+    if f >= 1e12:
+        return f"{f / 1e12:.1f} T"
+    if f >= 1e9:
+        return f"{f / 1e9:.1f} G"
+    return f"{f:.0f}"
+
+
+def _fmt_mb_as_gb(mb: float) -> str:
+    """Convert MB to GB string (e.g. '13.4 GB')."""
+    return f"{mb / 1024:.1f} GB"
+
+
+def _print_model_summary(info: dict) -> None:
+    """Print a model inspection summary block to stdout.
+
+    All fields are optional — lines are omitted when values are None.
+    This function must never raise; callers wrap it in try/except.
+    """
+    div = _divider()
+    print(div)
+    print(" Model Inspection")
+    print(div)
+
+    if info.get("param_count") is not None:
+        print(f" Parameters      : {_fmt_params(info['param_count'])}")
+    if info.get("layer_count") is not None:
+        print(f" Layers          : {info['layer_count']}")
+
+    # Attention heads — combine query and KV counts on one line when both present.
+    if info.get("attention_head_count") is not None:
+        heads_str = str(info["attention_head_count"])
+        if info.get("attention_head_count_kv") is not None:
+            heads_str += f"  (KV heads: {info['attention_head_count_kv']})"
+        print(f" Attention heads : {heads_str}")
+
+    if info.get("hidden_size") is not None:
+        print(f" Hidden size     : {info['hidden_size']}")
+    if info.get("feed_forward_length") is not None:
+        print(f" FFN size        : {info['feed_forward_length']}")
+    if info.get("kv_cache_size_mb") is not None:
+        print(f" KV cache        : {_fmt_mb_as_gb(info['kv_cache_size_mb'])}  (at full context)")
+    if info.get("memory_footprint_mb") is not None:
+        print(f" Memory footprint: {_fmt_mb_as_gb(info['memory_footprint_mb'])} (FP16)")
+    if info.get("flops_per_token") is not None:
+        print(f" FLOPs/token     : {_fmt_flops(info['flops_per_token'])}")
+
+    # Workload classification (derived from FFN ratio).
+    ffn = info.get("feed_forward_length")
+    hidden = info.get("hidden_size")
+    if ffn is not None and hidden is not None and hidden > 0:
+        ffn_ratio = ffn / hidden
+        if ffn_ratio >= 8:
+            workload = "Compute-bound"
+        elif ffn_ratio <= 2:
+            workload = "Memory-bound"
+        else:
+            workload = "Balanced"
+        print(div)
+        print(f" Workload type   : {workload} (FFN ratio {ffn_ratio:.1f}\u00d7)")
+
+    print(div)
 
 
 def cmd_profile(_args: argparse.Namespace) -> None:
@@ -54,6 +128,14 @@ def cmd_optimize(args: argparse.Namespace) -> None:
         else:
             print(f"ERROR: {msg}", file=sys.stderr)
         sys.exit(1)
+
+    # Model inspection summary (best-effort — never fatal).
+    try:
+        import vectorprime._vectorprime as _vectorprime  # type: ignore[import]
+        model_info = _vectorprime.analyze_model(model_path)
+        _print_model_summary(model_info)
+    except Exception:
+        pass
 
     # Formatted summary.
     print(_divider())

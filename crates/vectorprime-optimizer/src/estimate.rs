@@ -75,12 +75,25 @@ pub fn estimate_llamacpp(
     let tokens_per_sec = cpu_tps * gpu_boost;
     let latency_ms = 1_000.0 / tokens_per_sec;
 
-    // Memory estimate from parameter count and bytes-per-param for the chosen
-    // quantization. When `param_count` is unknown we report 0 (no pruning).
-    let peak_memory_mb = model
-        .param_count
-        .map(|p| (p as f64 * bytes_per_param(&config.quantization) / 1_000_000.0) as u64)
-        .unwrap_or(0);
+    // Memory estimate: prefer the FP16 baseline from the IR (more accurate)
+    // and scale it by the quantization byte ratio. Fall back to the raw
+    // param_count formula when memory_footprint_mb is absent.
+    // FP16 baseline is 2 bytes/param, so scale = bytes_per_param / 2.0.
+    let model_memory_mb = if let Some(fp16_mb) = model.memory_footprint_mb {
+        let scale = bytes_per_param(&config.quantization) / 2.0;
+        (fp16_mb * scale) as u64
+    } else {
+        model
+            .param_count
+            .map(|p| (p as f64 * bytes_per_param(&config.quantization) / 1_000_000.0) as u64)
+            .unwrap_or(0)
+    };
+
+    // Add KV cache overhead (upper-bound at full context, FP16).
+    // This is the same value regardless of model quantization because the
+    // KV cache is always stored in FP16 by most runtimes.
+    let kv_overhead_mb = model.kv_cache_size_mb.unwrap_or(0.0) as u64;
+    let peak_memory_mb = model_memory_mb.saturating_add(kv_overhead_mb);
 
     BenchmarkResult {
         tokens_per_sec,
@@ -151,6 +164,13 @@ mod tests {
             path: PathBuf::from("/tmp/model.gguf"),
             format: ModelFormat::GGUF,
             param_count,
+            hidden_size: None,
+            attention_head_count: None,
+            attention_head_count_kv: None,
+            feed_forward_length: None,
+            kv_cache_size_mb: None,
+            memory_footprint_mb: None,
+            flops_per_token: None,
         }
     }
 

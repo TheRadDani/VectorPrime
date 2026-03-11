@@ -43,6 +43,29 @@ pub struct ModelIR {
     pub context_length: Option<u32>,
     /// Number of transformer blocks (layers).
     pub layer_count: Option<u32>,
+    // ── Parsed from GGUF KV metadata ─────────────────────────────────────────
+    /// Embedding dimension (hidden size). GGUF key: `{arch}.embedding_length`
+    pub hidden_size: Option<u32>,
+    /// Number of query attention heads. GGUF key: `{arch}.attention.head_count`
+    pub attention_head_count: Option<u32>,
+    /// Number of KV heads (GQA/MQA). GGUF key: `{arch}.attention.head_count_kv`
+    ///
+    /// Falls back to `attention_head_count` when absent (standard MHA).
+    pub attention_head_count_kv: Option<u32>,
+    /// FFN intermediate layer size. GGUF key: `{arch}.feed_forward_length`
+    pub feed_forward_length: Option<u64>,
+    // ── Derived (computed from parsed fields) ─────────────────────────────────
+    /// Estimated KV cache size in MB at FP16, for the full context length.
+    ///
+    /// Formula: `2 * layers * kv_heads * head_dim * context_len * 2 bytes / 1_048_576`
+    ///
+    /// This is an upper bound at maximum context — useful for memory pressure
+    /// estimation. head_dim = hidden_size / attention_head_count.
+    pub kv_cache_size_mb: Option<f64>,
+    /// Estimated model memory footprint in MB at FP16 (2 bytes/param).
+    pub memory_footprint_mb: Option<f64>,
+    /// Estimated FLOPs per output token. Approximation: `2 × param_count`.
+    pub flops_per_token: Option<f64>,
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -292,6 +315,10 @@ pub fn parse_gguf(path: &Path) -> Result<ModelIR> {
     let mut block_count: Option<u64> = None;
     let mut context_length: Option<u64> = None;
     let mut embedding_length: Option<u64> = None;
+    // New architecture metric keys:
+    let mut attn_head_count: Option<u64> = None;
+    let mut attn_head_count_kv: Option<u64> = None;
+    let mut feed_forward_length: Option<u64> = None;
 
     for _ in 0..kv_count {
         let key = read_gguf_string(&mut r).context("read KV key")?;
@@ -318,34 +345,56 @@ pub fn parse_gguf(path: &Path) -> Result<ModelIR> {
                 }
             }
             other => {
-                // Capture arch-specific keys if they match the pattern
-                // `{arch}.block_count`, `{arch}.context_length`, or
-                // `{arch}.embedding_length`.
-                if let Some(suffix) = other.rfind('.').map(|i| &other[i + 1..]) {
-                    match suffix {
-                        "block_count" if block_count.is_none() => {
-                            block_count = read_value_as_u64(&mut r, vtype)
-                                .with_context(|| format!("read {key}"))
-                                .ok();
-                        }
-                        "context_length" if context_length.is_none() => {
-                            context_length = read_value_as_u64(&mut r, vtype)
-                                .with_context(|| format!("read {key}"))
-                                .ok();
-                        }
-                        "embedding_length" if embedding_length.is_none() => {
-                            embedding_length = read_value_as_u64(&mut r, vtype)
-                                .with_context(|| format!("read {key}"))
-                                .ok();
-                        }
-                        _ => {
-                            skip_gguf_value(&mut r, vtype)
-                                .with_context(|| format!("skip key '{key}'"))?;
-                        }
-                    }
+                // Multi-segment attention keys must be checked BEFORE the
+                // single-segment rfind fallback because `rfind('.')` on
+                // "llama.attention.head_count" yields "head_count" — not
+                // unique enough to distinguish from a hypothetical
+                // "{arch}.head_count" key.
+                //
+                // The head_count check explicitly excludes head_count_kv to
+                // prevent the shorter suffix from consuming the longer one.
+                if other.ends_with(".attention.head_count") && !other.ends_with(".head_count_kv") {
+                    attn_head_count = read_value_as_u64(&mut r, vtype)
+                        .with_context(|| format!("read {key}"))
+                        .ok();
+                } else if other.ends_with(".attention.head_count_kv") {
+                    attn_head_count_kv = read_value_as_u64(&mut r, vtype)
+                        .with_context(|| format!("read {key}"))
+                        .ok();
+                } else if other.ends_with(".feed_forward_length") {
+                    feed_forward_length = read_value_as_u64(&mut r, vtype)
+                        .with_context(|| format!("read {key}"))
+                        .ok();
                 } else {
-                    skip_gguf_value(&mut r, vtype)
-                        .with_context(|| format!("skip key '{other}'"))?;
+                    // Capture arch-specific keys if they match the pattern
+                    // `{arch}.block_count`, `{arch}.context_length`, or
+                    // `{arch}.embedding_length`.
+                    if let Some(suffix) = other.rfind('.').map(|i| &other[i + 1..]) {
+                        match suffix {
+                            "block_count" if block_count.is_none() => {
+                                block_count = read_value_as_u64(&mut r, vtype)
+                                    .with_context(|| format!("read {key}"))
+                                    .ok();
+                            }
+                            "context_length" if context_length.is_none() => {
+                                context_length = read_value_as_u64(&mut r, vtype)
+                                    .with_context(|| format!("read {key}"))
+                                    .ok();
+                            }
+                            "embedding_length" if embedding_length.is_none() => {
+                                embedding_length = read_value_as_u64(&mut r, vtype)
+                                    .with_context(|| format!("read {key}"))
+                                    .ok();
+                            }
+                            _ => {
+                                skip_gguf_value(&mut r, vtype)
+                                    .with_context(|| format!("skip key '{key}'"))?;
+                            }
+                        }
+                    } else {
+                        skip_gguf_value(&mut r, vtype)
+                            .with_context(|| format!("skip key '{other}'"))?;
+                    }
                 }
             }
         }
@@ -362,12 +411,44 @@ pub fn parse_gguf(path: &Path) -> Result<ModelIR> {
         Some(12u64.saturating_mul(blocks).saturating_mul(embed_len))
     });
 
+    // KV heads fall back to query heads when head_count_kv is absent (standard MHA).
+    let kv_heads = attn_head_count_kv.or(attn_head_count);
+
+    // KV cache upper bound at FP16 for the full context length.
+    // Formula: 2 (K+V) * layers * kv_heads * head_dim * context_len * 2 bytes (FP16) / MB
+    // head_dim = embedding_length / attention_head_count
+    let kv_cache_size_mb = (|| {
+        let layers = block_count? as f64;
+        let heads = kv_heads? as f64;
+        let hidden = embedding_length? as f64;
+        let attn_heads = attn_head_count? as f64;
+        if attn_heads == 0.0 {
+            return None;
+        }
+        let head_dim = hidden / attn_heads;
+        let ctx = context_length? as f64;
+        Some(2.0 * layers * heads * head_dim * ctx * 2.0 / 1_048_576.0)
+    })();
+
+    // FP16 footprint: 2 bytes per parameter.
+    let memory_footprint_mb = param_count.map(|p| p as f64 * 2.0 / 1_048_576.0);
+
+    // FLOPs per output token — standard approximation: 2 × param_count.
+    let flops_per_token = param_count.map(|p| 2.0 * p as f64);
+
     Ok(ModelIR {
         format: ModelFormat::GGUF,
         param_count,
         architecture: general_architecture,
         context_length: context_length.map(|v| v as u32),
         layer_count: block_count.map(|v| v as u32),
+        hidden_size: embedding_length.map(|v| v as u32),
+        attention_head_count: attn_head_count.map(|v| v as u32),
+        attention_head_count_kv: attn_head_count_kv.map(|v| v as u32),
+        feed_forward_length,
+        kv_cache_size_mb,
+        memory_footprint_mb,
+        flops_per_token,
     })
 }
 
@@ -421,12 +502,24 @@ pub fn parse_onnx(path: &Path) -> Result<ModelIR> {
         .filter(|&n| n > 0)
         .map(|n| n as u32);
 
+    // ONNX graphs carry no architecture metadata; derive what we can from
+    // the parameter count alone.
+    let memory_footprint_mb = param_count.map(|p| p as f64 * 2.0 / 1_048_576.0);
+    let flops_per_token = param_count.map(|p| 2.0 * p as f64);
+
     Ok(ModelIR {
         format: ModelFormat::ONNX,
         param_count,
-        architecture: None, // ONNX graphs carry no named architecture field
+        architecture: None,
         context_length: None,
         layer_count,
+        hidden_size: None,
+        attention_head_count: None,
+        attention_head_count_kv: None,
+        feed_forward_length: None,
+        kv_cache_size_mb: None,
+        memory_footprint_mb,
+        flops_per_token,
     })
 }
 
@@ -811,6 +904,85 @@ mod tests {
                 // Also acceptable — empty protobuf may fail to parse.
             }
         }
+    }
+
+    // ── New architecture metric tests ────────────────────────────────────────
+
+    #[test]
+    fn gguf_attention_head_count_parsed() {
+        let tmp = GgufBuilder::new()
+            .add_string("general.architecture", "llama")
+            .add_uint32("llama.attention.head_count", 32)
+            .write_to_tempfile();
+
+        let ir = parse_gguf(tmp.path()).expect("parse should succeed");
+        assert_eq!(
+            ir.attention_head_count,
+            Some(32),
+            "attention_head_count should be 32"
+        );
+        // head_count_kv absent — falls back to None (not the same as head_count in ModelIR)
+        assert_eq!(ir.attention_head_count_kv, None);
+    }
+
+    #[test]
+    fn gguf_attention_head_count_kv_parsed() {
+        let tmp = GgufBuilder::new()
+            .add_string("general.architecture", "llama")
+            .add_uint32("llama.attention.head_count", 32)
+            .add_uint32("llama.attention.head_count_kv", 8)
+            .write_to_tempfile();
+
+        let ir = parse_gguf(tmp.path()).expect("parse should succeed");
+        assert_eq!(ir.attention_head_count, Some(32));
+        assert_eq!(
+            ir.attention_head_count_kv,
+            Some(8),
+            "attention_head_count_kv should be 8 (GQA)"
+        );
+    }
+
+    #[test]
+    fn gguf_kv_cache_size_derived() {
+        // Use small values to verify the formula:
+        // 2 * layers * kv_heads * head_dim * context_len * 2 / 1_048_576
+        // head_dim = embedding_length / head_count = 64 / 4 = 16
+        // kv_heads = head_count_kv = 2
+        // kv_cache = 2 * 4 * 2 * 16 * 128 * 2 / 1_048_576 = 0.000_488_281...
+        let tmp = GgufBuilder::new()
+            .add_string("general.architecture", "llama")
+            .add_uint32("llama.block_count", 4)
+            .add_uint32("llama.context_length", 128)
+            .add_uint32("llama.embedding_length", 64)
+            .add_uint32("llama.attention.head_count", 4)
+            .add_uint32("llama.attention.head_count_kv", 2)
+            .write_to_tempfile();
+
+        let ir = parse_gguf(tmp.path()).expect("parse should succeed");
+        assert!(
+            ir.kv_cache_size_mb.is_some(),
+            "kv_cache_size_mb should be Some"
+        );
+        assert!(
+            ir.kv_cache_size_mb.unwrap() > 0.0,
+            "kv_cache_size_mb should be positive"
+        );
+    }
+
+    #[test]
+    fn gguf_memory_footprint_derived() {
+        let param_count: u64 = 7_000_000_000;
+        let tmp = GgufBuilder::new()
+            .add_uint64("general.parameter_count", param_count)
+            .write_to_tempfile();
+
+        let ir = parse_gguf(tmp.path()).expect("parse should succeed");
+        let expected_mb = param_count as f64 * 2.0 / 1_048_576.0;
+        assert_eq!(
+            ir.memory_footprint_mb,
+            Some(expected_mb),
+            "memory_footprint_mb should be param_count * 2 / 1_048_576"
+        );
     }
 
     // ── parse_model dispatch ──────────────────────────────────────────────────
