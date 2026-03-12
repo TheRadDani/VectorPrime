@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use anyhow::Result;
+use serde::Deserialize;
 use vectorprime_core::{
     BenchmarkResult, ModelFormat, ModelInfo, RuntimeAdapter, RuntimeConfig, RuntimeError,
 };
-use serde::Deserialize;
 
 /// Path to the bundled Python runner, relative to the workspace root.
 const RUNNER_REL_PATH: &str = "python/vectorprime/onnx_runner.py";
@@ -267,8 +267,10 @@ pub fn parse_onnx_output(json_str: &str) -> Result<BenchmarkResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vectorprime_core::{ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind};
     use std::path::PathBuf;
+    use vectorprime_core::{
+        ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind,
+    };
 
     fn sample_config() -> RuntimeConfig {
         RuntimeConfig {

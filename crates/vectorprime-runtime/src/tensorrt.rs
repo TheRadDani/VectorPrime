@@ -222,8 +222,10 @@ fn query_compute_capability() -> Option<(u32, u32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vectorprime_core::{ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind};
     use std::path::PathBuf;
+    use vectorprime_core::{
+        ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind,
+    };
 
     fn sample_config() -> RuntimeConfig {
         RuntimeConfig {

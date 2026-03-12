@@ -225,10 +225,12 @@ fn estimate_memory_mb(model: &ModelInfo, config: &RuntimeConfig) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vectorprime_core::{ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind};
     use std::io::Write as _;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
+    use vectorprime_core::{
+        ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind,
+    };
 
     fn sample_config() -> RuntimeConfig {
         RuntimeConfig {

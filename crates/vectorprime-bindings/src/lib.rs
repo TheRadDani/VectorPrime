@@ -312,11 +312,14 @@ fn optimize(
 
     // Attempt re-quantization; if llama-quantize is absent we degrade
     // gracefully rather than failing the whole optimization.
-    let quantized_path =
-        match vectorprime_export::quantize_gguf(&path, &derived_output, &result.config.quantization) {
-            Ok(()) => Some(derived_output),
-            Err(_) => None,
-        };
+    let quantized_path = match vectorprime_export::quantize_gguf(
+        &path,
+        &derived_output,
+        &result.config.quantization,
+    ) {
+        Ok(()) => Some(derived_output),
+        Err(_) => None,
+    };
 
     Ok(PyOptimizationResult {
         inner: result,

@@ -269,10 +269,10 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use vectorprime_core::{
         CpuInfo, GpuInfo, GpuVendor, HardwareProfile, ModelFormat, ModelInfo, RamInfo, SimdLevel,
     };
-    use std::path::PathBuf;
 
     fn cpu_only_hw(cores: u32) -> HardwareProfile {
         HardwareProfile {
@@ -532,7 +532,10 @@ mod tests {
         // Should NOT be exactly the old hardcoded set [0, 10, 20, 33]
         assert_ne!(
             layer_values,
-            [0u32, 10, 20, 33].iter().cloned().collect::<std::collections::BTreeSet<_>>(),
+            [0u32, 10, 20, 33]
+                .iter()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
             "gpu_layers must be VRAM-proportional, not the old hardcoded set"
         );
     }

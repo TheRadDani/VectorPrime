@@ -187,7 +187,9 @@ pub fn gguf_to_onnx(input: &Path, output: &Path) -> Result<PathBuf> {
     })?;
 
     let runner = find_runner(GGUF_TO_ONNX_RUNNER).ok_or_else(|| {
-        anyhow::anyhow!("gguf_to_onnx_runner.py not found — ensure vectorprime is properly installed")
+        anyhow::anyhow!(
+            "gguf_to_onnx_runner.py not found — ensure vectorprime is properly installed"
+        )
     })?;
 
     let request = serde_json::json!({
@@ -227,7 +229,9 @@ pub fn onnx_to_gguf(input: &Path, output: &Path) -> Result<PathBuf> {
     })?;
 
     let runner = find_runner(ONNX_TO_GGUF_RUNNER).ok_or_else(|| {
-        anyhow::anyhow!("onnx_to_gguf_runner.py not found — ensure vectorprime is properly installed")
+        anyhow::anyhow!(
+            "onnx_to_gguf_runner.py not found — ensure vectorprime is properly installed"
+        )
     })?;
 
     let request = serde_json::json!({

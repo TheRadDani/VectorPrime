@@ -59,7 +59,8 @@ impl RuntimeAdapter for OllamaAdapter {
             anyhow::anyhow!(RuntimeError::NotInstalled {
                 binary: "ollama".to_string(),
                 install_hint: "install Ollama from https://ollama.ai or via your package manager \
-                               (e.g. brew install ollama)".to_string(),
+                               (e.g. brew install ollama)"
+                    .to_string(),
             })
         })?;
 
@@ -92,7 +93,13 @@ impl RuntimeAdapter for OllamaAdapter {
         let tag = stem
             .to_lowercase()
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '-'
+                }
+            })
             .collect::<String>();
 
         self.model_tag = Some(tag);
@@ -150,12 +157,11 @@ impl RuntimeAdapter for OllamaAdapter {
         //   eval rate:           32.55 tokens/s
         //   eval duration:       1.537417792s
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let (tokens_per_sec, latency_ms) =
-            parse_ollama_output(&stderr).ok_or_else(|| {
-                anyhow::anyhow!(RuntimeError::InferenceFailed {
-                    reason: "could not parse timing output from ollama".to_string(),
-                })
-            })?;
+        let (tokens_per_sec, latency_ms) = parse_ollama_output(&stderr).ok_or_else(|| {
+            anyhow::anyhow!(RuntimeError::InferenceFailed {
+                reason: "could not parse timing output from ollama".to_string(),
+            })
+        })?;
 
         Ok(BenchmarkResult {
             tokens_per_sec,
@@ -239,7 +245,9 @@ fn estimate_memory_mb(model: &ModelInfo, config: &RuntimeConfig) -> u64 {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use vectorprime_core::{ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind};
+    use vectorprime_core::{
+        ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind,
+    };
 
     fn sample_config() -> RuntimeConfig {
         RuntimeConfig {

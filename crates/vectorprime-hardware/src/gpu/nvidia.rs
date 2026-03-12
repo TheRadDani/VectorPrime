@@ -4,8 +4,8 @@
 // Called by gpu::probe_all() in mod.rs; the GpuInfo it returns flows into
 // HardwareProfile and from there into the optimizer candidate generator.
 
-use vectorprime_core::{GpuInfo, GpuProbe, GpuVendor};
 use std::process::Command;
+use vectorprime_core::{GpuInfo, GpuProbe, GpuVendor};
 
 /// Probe implementation for NVIDIA GPUs via `nvidia-smi`.
 pub struct NvidiaProbe;

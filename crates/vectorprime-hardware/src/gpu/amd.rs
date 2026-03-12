@@ -5,8 +5,8 @@
 // gracefully when neither tool is available or output cannot be parsed.
 // Called by gpu::probe_all() in mod.rs.
 
-use vectorprime_core::{GpuInfo, GpuProbe, GpuVendor};
 use std::process::Command;
+use vectorprime_core::{GpuInfo, GpuProbe, GpuVendor};
 
 /// Probe implementation for AMD GPUs via `rocm-smi` or `amd-smi`.
 pub struct AmdProbe;
@@ -172,7 +172,8 @@ mod tests {
     #[test]
     fn test_parse_rocm_smi_csv_basic() {
         // Simulate a minimal rocm-smi CSV output.
-        let output = "device,Card series,VRAM Total Memory (B)\ncard0,Radeon RX 6800 XT,17163091968\n";
+        let output =
+            "device,Card series,VRAM Total Memory (B)\ncard0,Radeon RX 6800 XT,17163091968\n";
         let info = parse_rocm_smi_output(output).expect("should parse");
         assert_eq!(info.name, "Radeon RX 6800 XT");
         assert_eq!(info.vram_mb, 16368); // 17163091968 / 1048576 = 16368

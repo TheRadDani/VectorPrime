@@ -109,10 +109,10 @@ pub fn estimate_llamacpp(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use vectorprime_core::{
         CpuInfo, GpuInfo, GpuVendor, HardwareProfile, ModelFormat, ModelInfo, RamInfo, RuntimeKind,
     };
-    use std::path::PathBuf;
 
     fn base_hw(cores: u32, simd: SimdLevel) -> HardwareProfile {
         HardwareProfile {

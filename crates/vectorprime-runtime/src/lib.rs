@@ -77,8 +77,10 @@ impl Default for AdapterRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vectorprime_core::{ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind};
     use std::path::PathBuf;
+    use vectorprime_core::{
+        ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind,
+    };
 
     fn sample_config(runtime: RuntimeKind) -> RuntimeConfig {
         RuntimeConfig {

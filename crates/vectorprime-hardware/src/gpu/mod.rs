@@ -19,11 +19,7 @@ use nvidia::NvidiaProbe;
 /// Priority: NVIDIA → AMD → Apple. Returns `None` when no supported GPU
 /// is detected on this machine.
 pub fn probe_all() -> Option<GpuInfo> {
-    let probes: &[&dyn GpuProbe] = &[
-        &NvidiaProbe,
-        &AmdProbe,
-        &AppleProbe,
-    ];
+    let probes: &[&dyn GpuProbe] = &[&NvidiaProbe, &AmdProbe, &AppleProbe];
 
     probes.iter().find_map(|p| p.probe())
 }

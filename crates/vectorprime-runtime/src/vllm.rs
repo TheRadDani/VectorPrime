@@ -189,15 +189,14 @@ except Exception as e:
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let (tokens_per_sec, latency_ms) =
-            parse_vllm_output(stdout.trim()).ok_or_else(|| {
-                anyhow::anyhow!(RuntimeError::InferenceFailed {
-                    reason: format!(
-                        "could not parse vLLM JSON output: {stdout}",
-                        stdout = stdout.trim()
-                    ),
-                })
-            })?;
+        let (tokens_per_sec, latency_ms) = parse_vllm_output(stdout.trim()).ok_or_else(|| {
+            anyhow::anyhow!(RuntimeError::InferenceFailed {
+                reason: format!(
+                    "could not parse vLLM JSON output: {stdout}",
+                    stdout = stdout.trim()
+                ),
+            })
+        })?;
 
         Ok(BenchmarkResult {
             tokens_per_sec,
@@ -245,9 +244,9 @@ pub fn quant_to_vllm_dtype(q: &QuantizationStrategy) -> &'static str {
         QuantizationStrategy::F16 => "float16",
         QuantizationStrategy::Q8_0 | QuantizationStrategy::Int8 => "float8_e4m3fn",
         // Q4 and Int4 fall back to float16; vLLM does not support sub-8-bit.
-        QuantizationStrategy::Q4_K_M
-        | QuantizationStrategy::Q4_0
-        | QuantizationStrategy::Int4 => "float16",
+        QuantizationStrategy::Q4_K_M | QuantizationStrategy::Q4_0 | QuantizationStrategy::Int4 => {
+            "float16"
+        }
     }
 }
 
@@ -279,7 +278,9 @@ fn estimate_memory_mb(model: &ModelInfo, config: &RuntimeConfig) -> u64 {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use vectorprime_core::{ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind};
+    use vectorprime_core::{
+        ModelFormat, ModelInfo, QuantizationStrategy, RuntimeConfig, RuntimeKind,
+    };
 
     fn sample_config() -> RuntimeConfig {
         RuntimeConfig {
