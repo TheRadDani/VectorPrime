@@ -110,13 +110,13 @@ jobs:
           pip install maturin pytest pytest-cov
           pip install -e .
 
-      - name: Build and install llmforge in dev mode
+      - name: Build and install VectorPrime in dev mode
         run: maturin build
 
       - name: Run Python unit tests (no fixtures required)
         run: |
           pytest tests/unit/ -v --tb=short \
-            --cov=llmforge --cov-report=term-missing
+            --cov=vectorprime --cov-report=term-missing
 
       - name: Run Python integration tests (skip fixture-dependent)
         run: |
@@ -159,7 +159,7 @@ jobs:
       - name: Check wheel installs cleanly
         run: |
           pip install target/wheels/*.whl
-          llmforge --help
+          vectorprime --help
 
   # ─────────────────────────────────────────────
   # Job 4: Coverage gate (≥ 70% required)
@@ -210,7 +210,7 @@ jobs:
           pip install --upgrade pip
           pip install maturin pytest pytest-cov
 
-      - name: Build and install llmforge in dev mode
+      - name: Build and install VectorPrime in dev mode
         run: maturin build
 
       - name: Install package
