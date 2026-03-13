@@ -109,13 +109,10 @@ fn drop_not_installed(
                     let label = e
                         .chain()
                         .find_map(|c| {
-                            c.downcast_ref::<RuntimeError>()
-                                .and_then(|r| match r {
-                                    RuntimeError::NotInstalled { binary, .. } => {
-                                        Some(binary.clone())
-                                    }
-                                    _ => None,
-                                })
+                            c.downcast_ref::<RuntimeError>().and_then(|r| match r {
+                                RuntimeError::NotInstalled { binary, .. } => Some(binary.clone()),
+                                _ => None,
+                            })
                         })
                         .unwrap_or_else(|| format!("{:?}", cfg.runtime));
                     missing_runtimes.insert(label);
