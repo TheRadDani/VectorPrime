@@ -30,7 +30,7 @@
 ---
 
 <p align="center">
-  <img src="assets/vectorprime_gif.gif" alt="Vector Prime Banner">
+  <img src="assets/vectorprime.jpeg" alt="Vector Prime Banner">
 </p>
 
 VectorPrime takes a model file and your hardware, then finds the fastest way to run it. It profiles your CPU, GPU, and RAM; parses the model's intermediate representation to extract architecture metadata; generates every valid combination of runtime, quantization, thread count, and GPU offload layers; benchmarks candidates in parallel; and hands you back the configuration that maximizes tokens per second within your memory budget. The result is a ready-to-use Ollama bundle — no guesswork required.
@@ -44,10 +44,11 @@ VectorPrime is built for developers and researchers who run inference locally an
 | Feature | Description | Status |
 |---|---|---|
 | Hardware profiling | Detects CPU core count, SIMD level (AVX/AVX2/AVX512), GPU VRAM and compute capability, and available RAM | Stable |
-| Model IR analysis | Reads GGUF and ONNX model files to extract parameter count, architecture, context length, and layer count without running inference | Stable |
-| Multi-runtime support | Benchmarks Ollama, TensorRT, ONNX Runtime, and llama.cpp against each other on your hardware | Stable |
+| Model IR analysis | Reads GGUF and ONNX model files to extract parameter count, architecture, context length, layer count, hidden size, attention heads, KV cache size, memory footprint, and FLOPs without running inference | Stable |
+| Multi-runtime support | Benchmarks Ollama (primary), TensorRT (primary), ONNX Runtime (secondary), and llama.cpp (deprioritized) against each other on your hardware | Stable |
 | Automatic quantization selection | Evaluates F16, Q8\_0, Q4\_K\_M, Q4\_0, Int8, and Int4 and picks the fastest that fits in memory | Stable |
 | Parallel benchmarking | Tokio-based async executor runs up to 3 configurations concurrently | Stable |
+| Optimization result caching | Caches results to `~/.llmforge/cache/` keyed by model identity and hardware profile; skips benchmarking entirely on a cache hit | Stable |
 | Ollama export | Generates a `Modelfile` with tuned `num_thread` and `num_gpu` values, ready for `ollama create` | Stable |
 | Format conversion | Bidirectional GGUF-to-ONNX and ONNX-to-GGUF conversion with full metadata round-trip | Stable |
 | Python API | PyO3 native extension — import and call from any Python script or notebook | Stable |
@@ -76,13 +77,18 @@ vectorprime export-ollama model.gguf \
 
 ## Installation
 
+### For Users
+
 ```bash
 pip install vectorprime
 ```
 
+No Rust toolchain required! Pre-built wheels are available for:
+- Python 3.9, 3.10, 3.11, 3.12
+- Linux (x86-64, Arm64), macOS (x86-64, Arm64), Windows (x86-64)
+
 **Requirements:**
 - Python 3.9 or later
-- Linux x86-64 (pre-built wheel provided; other platforms require the Rust toolchain for source compilation)
 - At least one supported inference runtime installed and on `PATH`
 
 **Optional runtime prerequisites:**
@@ -134,7 +140,7 @@ vectorprime optimize model.gguf
 ─────────────────────────────────────
 VectorPrime Optimization Result
 ─────────────────────────────────────
-Runtime:       LlamaCpp
+Runtime:       Ollama
 Quantization:  Q4_K_M
 Threads:       16
 GPU Layers:    20
@@ -163,6 +169,9 @@ Options:
   --latency MS            Maximum tolerated latency (ms). Configurations above
                           this threshold are excluded.
   --output PATH           Destination path for the re-quantized output model.
+  --no-cache              Bypass the result cache and run benchmarking even if
+                          a cached result exists. The new result is stored after
+                          completion.
 ```
 
 ### Export to Ollama
@@ -214,6 +223,32 @@ Missing binaries return a structured `NotInstalled` error and are skipped — Ve
 
 ---
 
+## Caching
+
+VectorPrime caches optimization results so repeated runs on the same model and hardware return instantly without re-running benchmarks.
+
+**Cache location:** `~/.llmforge/cache/`
+
+**Cache key:** SHA-256 of `{model_mtime}_{model_size}_{hardware_profile_json}`. The key encodes both the model's identity (modification time and file size) and the full hardware profile. A result cached on one machine is not reused on a different machine, and a result cached for one model version is invalidated when the model file changes.
+
+**On cache hit:** All benchmarking is skipped; the stored `OptimizationResult` is returned immediately.
+
+**On cache miss or read error:** VectorPrime runs normally and writes the result to the cache after benchmarking completes.
+
+**Disabling the cache:**
+
+```bash
+# CLI
+vectorprime optimize model.gguf --no-cache
+```
+
+```python
+# Python API
+result = vectorprime.optimize("model.gguf", use_cache=False)
+```
+
+---
+
 ## How It Works
 
 VectorPrime runs a six-stage compiler-style pipeline:
@@ -259,12 +294,19 @@ hw = vectorprime.profile_hardware()
 print(hw.cpu_cores, hw.gpu_model, hw.ram_total_mb)
 
 # Inspect a model's architecture without running inference
+# Returns a dict with: format, param_count, architecture, context_length,
+# layer_count, hidden_size, attention_head_count, attention_head_count_kv,
+# feed_forward_length, kv_cache_size_mb, memory_footprint_mb, flops_per_token
 model_info = vectorprime.analyze_model("model.gguf")
+print(model_info["param_count"], model_info["architecture"], model_info["context_length"])
 
-# Run optimization
-result = vectorprime.optimize("model.gguf", "gguf")
+# Run optimization (results are cached by default in ~/.llmforge/cache/)
+result = vectorprime.optimize("model.gguf", use_cache=True)
 print(result.runtime, result.tokens_per_sec, result.latency_ms)
-# LlamaCpp  110.3  91.2
+# Ollama  110.3  91.2
+
+# Bypass the cache to force a fresh benchmark run
+result = vectorprime.optimize("model.gguf", use_cache=False)
 
 # Export an Ollama-ready bundle
 manifest_json = vectorprime.export_ollama(result, "./optimized_model")
@@ -327,6 +369,8 @@ vectorprime-bindings              (PyO3 cdylib — _vectorprime.so)
 ---
 
 ## Build from Source
+
+> **For end-users**: Use `pip install vectorprime` instead. For developers and contributors who want to modify the codebase, follow the setup below. Building from source requires the Rust toolchain.
 
 ### Prerequisites
 
