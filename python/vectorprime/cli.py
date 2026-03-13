@@ -118,7 +118,7 @@ def cmd_optimize(args: argparse.Namespace) -> None:
     print("Running 4-stage Bayesian optimization pipeline (hardware profiling → model analysis → runtime preselection → TPE Bayesian search)…")
     try:
         import vectorprime._vectorprime as _vectorprime  # type: ignore[import]
-        result = _vectorprime.optimize(model_path, fmt, args.gpu, args.latency, output)
+        result = _vectorprime.optimize(model_path, fmt, args.gpu, args.latency, output, not args.no_cache)
     except RuntimeError as e:
         msg = str(e)
         if "llama-quantize" in msg:
@@ -272,6 +272,12 @@ def build_parser() -> argparse.ArgumentParser:
             "Destination path for the re-quantized output model "
             "(default: {stem}-optimized.gguf next to the input file)."
         ),
+    )
+    opt.add_argument(
+        "--no-cache",
+        action="store_true",
+        default=False,
+        help="Bypass the optimization cache and force a full benchmark run.",
     )
 
     # convert-to-onnx

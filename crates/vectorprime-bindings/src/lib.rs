@@ -260,7 +260,6 @@ fn optimize(
     output_path: Option<String>,
     use_cache: bool,
 ) -> PyResult<PyOptimizationResult> {
-    let _ = use_cache; // parameter kept for API compatibility; caching handled internally
     let fmt = parse_model_format(format)?;
     let path = PathBuf::from(model_path);
 
@@ -305,6 +304,7 @@ fn optimize(
             model,
             hw,
             max_latency_ms,
+            use_cache,
         ))
         .map_err(to_py_err)?;
 

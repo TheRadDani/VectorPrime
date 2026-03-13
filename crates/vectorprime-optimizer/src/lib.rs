@@ -23,6 +23,7 @@
 
 pub mod bayes;
 pub mod benchmark;
+pub mod cache;
 pub mod estimate;
 pub mod hierarchical;
 pub mod search;
@@ -277,7 +278,16 @@ pub async fn run_optimization(
     model: ModelInfo,
     hw: HardwareProfile,
     max_latency_ms: Option<f64>,
+    use_cache: bool,
 ) -> Result<OptimizationResult> {
+    // ── Cache lookup ─────────────────────────────────────────────────────────────
+    if use_cache {
+        if let Some(cached) = cache::cache_lookup(&hw, &model) {
+            eprintln!("[vectorprime] Cache hit — returning stored result (use --no-cache to force re-run)");
+            return Ok(cached);
+        }
+    }
+
     // ── Stage 1: Hardware Profiling ───────────────────────────────────────────
     let hw_ctx = HardwareContext::from_hw(&hw);
     eprintln!(
@@ -508,9 +518,19 @@ pub async fn run_optimization(
                     result.metrics.latency_ms, limit,
                 );
             } else {
+                if use_cache {
+                    if let Err(e) = cache::cache_store(&hw, &model, &result) {
+                        eprintln!("[vectorprime] Warning: could not write cache: {e}");
+                    }
+                }
                 return Ok(result);
             }
         } else {
+            if use_cache {
+                if let Err(e) = cache::cache_store(&hw, &model, &result) {
+                    eprintln!("[vectorprime] Warning: could not write cache: {e}");
+                }
+            }
             return Ok(result);
         }
     }
@@ -528,8 +548,19 @@ pub async fn run_optimization(
         }
     );
 
+    // Clone model and hw before moving them into the cartesian fallback so that
+    // they remain available for cache_store on the success path.
+    let model_for_cache = model.clone();
+    let hw_for_cache = hw.clone();
     match run_optimization_cartesian(model, hw, max_latency_ms).await {
-        Ok(r) => Ok(r),
+        Ok(r) => {
+            if use_cache {
+                if let Err(e) = cache::cache_store(&hw_for_cache, &model_for_cache, &r) {
+                    eprintln!("[vectorprime] Warning: could not write cache: {e}");
+                }
+            }
+            Ok(r)
+        }
         Err(cartesian_err) => Err(no_config_error(&reasons, &missing, max_latency_ms)
             .context(format!("cartesian fallback also failed: {cartesian_err}"))),
     }
