@@ -232,7 +232,12 @@ pub async fn run_optimization_hierarchical(
         candidate_runtimes.len()
     );
 
-    let phase1_ranked = run_phase1(&candidate_runtimes, Arc::clone(&model_arc), Arc::clone(&cfg_arc)).await;
+    let phase1_ranked = run_phase1(
+        &candidate_runtimes,
+        Arc::clone(&model_arc),
+        Arc::clone(&cfg_arc),
+    )
+    .await;
 
     // Determine which runtimes advance to Phase 2.
     let top_runtimes: HashSet<RuntimeKind> = if phase1_ranked.is_empty() {
@@ -328,11 +333,11 @@ pub async fn run_optimization_hierarchical(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vectorprime_core::{
-        BenchmarkResult, CpuInfo, HardwareProfile, ModelFormat, ModelInfo,
-        QuantizationStrategy, RamInfo, RuntimeConfig, RuntimeKind, SimdLevel,
-    };
     use std::path::PathBuf;
+    use vectorprime_core::{
+        BenchmarkResult, CpuInfo, HardwareProfile, ModelFormat, ModelInfo, QuantizationStrategy,
+        RamInfo, RuntimeConfig, RuntimeKind, SimdLevel,
+    };
 
     // ── Test helpers ──────────────────────────────────────────────────────────
 
@@ -453,8 +458,9 @@ mod tests {
         let all_candidates = generate_candidates(&hw, &model);
 
         // GGUF model generates LlamaCpp + Ollama candidates. Simulate keeping both.
-        let top_runtimes: HashSet<RuntimeKind> =
-            [RuntimeKind::LlamaCpp, RuntimeKind::Ollama].into_iter().collect();
+        let top_runtimes: HashSet<RuntimeKind> = [RuntimeKind::LlamaCpp, RuntimeKind::Ollama]
+            .into_iter()
+            .collect();
 
         let phase2_candidates: Vec<_> = all_candidates
             .iter()
@@ -505,9 +511,21 @@ mod tests {
             ranked.iter().all(|(rt, _)| *rt != RuntimeKind::OnnxRuntime),
             "NotInstalled runtime must be excluded from Phase 1 ranking"
         );
-        assert_eq!(ranked.len(), 2, "only the 2 installed runtimes should remain");
-        assert_eq!(ranked[0].0, RuntimeKind::TensorRT, "TensorRT should rank first (200 tps)");
-        assert_eq!(ranked[1].0, RuntimeKind::LlamaCpp, "LlamaCpp should rank second (100 tps)");
+        assert_eq!(
+            ranked.len(),
+            2,
+            "only the 2 installed runtimes should remain"
+        );
+        assert_eq!(
+            ranked[0].0,
+            RuntimeKind::TensorRT,
+            "TensorRT should rank first (200 tps)"
+        );
+        assert_eq!(
+            ranked[1].0,
+            RuntimeKind::LlamaCpp,
+            "LlamaCpp should rank second (100 tps)"
+        );
     }
 
     /// HierarchicalSearchConfig defaults must be sane.
@@ -515,8 +533,14 @@ mod tests {
     fn test_hierarchical_config_defaults() {
         let cfg = HierarchicalSearchConfig::default();
         assert_eq!(cfg.top_n_runtimes, 2, "default top_n_runtimes must be 2");
-        assert!(!cfg.phase1_prompt.is_empty(), "default phase1_prompt must not be empty");
-        assert_eq!(cfg.phase1_batch_size, 1, "default phase1_batch_size must be 1");
+        assert!(
+            !cfg.phase1_prompt.is_empty(),
+            "default phase1_prompt must not be empty"
+        );
+        assert_eq!(
+            cfg.phase1_batch_size, 1,
+            "default phase1_batch_size must be 1"
+        );
     }
 
     /// select_best used in Phase 2 must pick the highest-tps result from the

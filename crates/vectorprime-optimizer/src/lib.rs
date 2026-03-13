@@ -25,7 +25,9 @@ pub mod search;
 pub mod selector;
 
 pub use estimate::estimate_llamacpp;
-pub use search::{bytes_per_param, default_base_config, generate_candidates, generate_stage_candidates};
+pub use search::{
+    bytes_per_param, default_base_config, generate_candidates, generate_stage_candidates,
+};
 pub use selector::select_best;
 
 use anyhow::Result;
@@ -51,7 +53,10 @@ const STAGE_NAMES: [&str; 5] = [
 /// PATH". Used to detect the "llama-cli not installed" scenario and replace
 /// failures with static estimates so the user receives a useful recommendation.
 fn all_llamacpp_not_installed(
-    results: &[(RuntimeConfig, anyhow::Result<vectorprime_core::BenchmarkResult>)],
+    results: &[(
+        RuntimeConfig,
+        anyhow::Result<vectorprime_core::BenchmarkResult>,
+    )],
 ) -> bool {
     use vectorprime_core::RuntimeKind;
     let llamacpp_results: Vec<_> = results
@@ -73,10 +78,16 @@ fn all_llamacpp_not_installed(
 /// Replace failed LlamaCpp entries with static hardware-aware estimates when
 /// `llama-cli` is absent. Returns the (possibly modified) result vec.
 fn apply_llamacpp_fallback(
-    results: Vec<(RuntimeConfig, anyhow::Result<vectorprime_core::BenchmarkResult>)>,
+    results: Vec<(
+        RuntimeConfig,
+        anyhow::Result<vectorprime_core::BenchmarkResult>,
+    )>,
     model: &ModelInfo,
     hw: &HardwareProfile,
-) -> Vec<(RuntimeConfig, anyhow::Result<vectorprime_core::BenchmarkResult>)> {
+) -> Vec<(
+    RuntimeConfig,
+    anyhow::Result<vectorprime_core::BenchmarkResult>,
+)> {
     if !all_llamacpp_not_installed(&results) {
         return results;
     }
@@ -101,7 +112,10 @@ fn apply_llamacpp_fallback(
 /// Deduplicates by using the innermost error in each chain so noisy
 /// multi-line errors don't produce dozens of identical reasons.
 fn collect_failure_reasons(
-    results: &[(RuntimeConfig, anyhow::Result<vectorprime_core::BenchmarkResult>)],
+    results: &[(
+        RuntimeConfig,
+        anyhow::Result<vectorprime_core::BenchmarkResult>,
+    )],
 ) -> Vec<String> {
     let mut seen = std::collections::BTreeSet::new();
     for (_, outcome) in results {

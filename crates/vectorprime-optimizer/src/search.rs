@@ -166,7 +166,10 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
 ///
 /// Reused by both `generate_candidates` and `generate_stage_candidates` so the
 /// workload-aware ordering is applied consistently in both paths.
-fn quant_order_for_workload(format: &ModelFormat, workload: &WorkloadType) -> Vec<QuantizationStrategy> {
+fn quant_order_for_workload(
+    format: &ModelFormat,
+    workload: &WorkloadType,
+) -> Vec<QuantizationStrategy> {
     match format {
         ModelFormat::GGUF => {
             let mut quants = vec![
