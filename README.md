@@ -52,7 +52,7 @@ VectorPrime is built for developers and researchers who run inference locally an
 | Ollama export | Generates a `Modelfile` with tuned `num_thread` and `num_gpu` values, ready for `ollama create` | Stable |
 | Format conversion | Bidirectional GGUF-to-ONNX and ONNX-to-GGUF conversion with full metadata round-trip | Stable |
 | Python API | PyO3 native extension — import and call from any Python script or notebook | Stable |
-| CLI interface | `profile`, `optimize`, `export-ollama`, `convert-to-onnx`, and `convert-to-gguf` subcommands | Stable |
+| CLI interface | `profile`, `optimize`, `convert-to-onnx`, and `convert-to-gguf` subcommands | Stable |
 
 ---
 
@@ -67,10 +67,8 @@ vectorprime profile
 # Find the best inference configuration for a model
 vectorprime optimize model.gguf
 
-# Export the result as an Ollama bundle
-vectorprime export-ollama model.gguf \
-  --result model.gguf.vectorprime_result.json \
-  --output-dir ./optimized_model
+# Export the result as an Ollama bundle (Python API)
+# See the Python API section below
 ```
 
 ---
@@ -151,8 +149,6 @@ Memory:        8.2 GB peak
 Optimized model written to: model-optimized.gguf
 ```
 
-The result is also written to `model.gguf.vectorprime_result.json`.
-
 **Options:**
 
 ```
@@ -174,29 +170,9 @@ Options:
                           completion.
 ```
 
-### Export to Ollama
+### Ollama Export (Python API)
 
-```bash
-vectorprime export-ollama model.gguf \
-  --result model.gguf.vectorprime_result.json \
-  --output-dir ./optimized_model
-```
-
-Produces:
-
-```
-optimized_model/
-├── Modelfile        # FROM + PARAMETER blocks
-├── model.gguf       # the (re-quantized) model file
-└── metadata.json    # full OptimizationResult for reference
-```
-
-Then:
-
-```bash
-ollama create mymodel -f optimized_model/Modelfile
-ollama run mymodel
-```
+Ollama export is available via the Python API. Call `vectorprime.export_ollama(result, output_dir)` to produce a `Modelfile`, `model.gguf`, and `metadata.json` bundle ready for `ollama create`. See the [Python API](#python-api) section for a full example.
 
 ### Convert Between Formats
 
@@ -251,36 +227,38 @@ result = vectorprime.optimize("model.gguf", use_cache=False)
 
 ## How It Works
 
-VectorPrime runs a six-stage compiler-style pipeline:
+VectorPrime runs a 4-stage Bayesian optimization pipeline. Before Stage 1, a cache lookup is performed — if a result for the same model and hardware already exists, all benchmarking is skipped entirely.
 
 ```
-[1] hardware_profiler
+[Cache] SHA-256 lookup in ~/.llmforge/cache/ — returns immediately on hit
+
+[1] Hardware Profiling (0 benchmarks)
       CPU cores, SIMD extensions (via raw-cpuid), GPU VRAM and compute
       capability (via nvidia-smi), available RAM (via sysinfo).
 
-[2] model_ir_analyzer
+[2] Model Graph Analysis (0 benchmarks)
       Parses the model file — GGUF via a custom byte reader, ONNX via
-      protobuf — to extract parameter count, architecture, context length,
-      and layer count without running inference.
+      protobuf — to extract parameter count, architecture, hidden size,
+      attention heads, KV cache size, and FLOPs per token without running
+      inference. Classifies workload as Memory-bound, Compute-bound, or
+      Balanced to guide quantization selection.
 
-[3] optimization_engine
-      Generates candidates as the cross-product of
-      (runtime × quantization × thread count × GPU offload layers),
-      pruned by VRAM and RAM constraints.
+[3] Runtime Preselection (0 benchmarks)
+      Selects viable runtimes based on model format (GGUF or ONNX) and
+      available hardware. Prunes quantization options by VRAM/RAM budget.
+      Computes the search space: runtimes × quantizations × gpu_layers ×
+      threads × batch_size.
 
-[4] runtime_adapters
-      Shells out to llama-cli, trtexec, or python3 for each candidate.
-      Adapters never link runtimes directly; a missing binary is a
-      structured error, not a panic.
-
-[5] benchmark_runner
-      Benchmarks up to 3 candidates concurrently (Tokio semaphore).
-      Collects tokens/sec, latency, and peak memory per candidate.
-
-[6] artifact_exporter
-      Writes the winning configuration as a Modelfile + metadata.json
-      for Ollama, and optionally re-quantizes the model with llama-quantize.
+[4] Bayesian Optimization (≤ 12 benchmarks)
+      Runs 5 quasi-random Halton samples across the search space, then 7
+      Tree-structured Parzen Estimator (TPE) refinement iterations.
+      Each benchmark shells out to the runtime adapter (Ollama, TensorRT,
+      ONNX Runtime, or llama.cpp) and collects tokens/sec, latency, and
+      peak memory. The best configuration is returned and cached.
+      Falls back to full cartesian search if all 12 evaluations fail.
 ```
+
+The result is cached to `~/.llmforge/cache/` after benchmarking, keyed by model identity and hardware profile.
 
 ---
 
@@ -337,7 +315,7 @@ Results from `vectorprime optimize` on a system with Intel Core i9-13900K (16 co
 VectorPrime is a Rust workspace. The Python layer (CLI + helpers) sits on top of a `cdylib` native extension compiled via PyO3 and maturin.
 
 ```
-python/vectorprime/cli.py         (argparse CLI — 5 subcommands)
+python/vectorprime/cli.py         (argparse CLI — 4 subcommands)
           |
           v
 vectorprime-bindings              (PyO3 cdylib — _vectorprime.so)
@@ -362,7 +340,7 @@ vectorprime-bindings              (PyO3 cdylib — _vectorprime.so)
 | `vectorprime-hardware` | CPU detection (raw-cpuid), NVIDIA GPU detection (nvidia-smi), RAM (sysinfo) |
 | `vectorprime-model-ir` | GGUF byte reader and ONNX protobuf parser; extracts architecture metadata without inference |
 | `vectorprime-runtime` | `LlamaCppAdapter`, `OnnxAdapter`, `TensorRtAdapter`; adapter registry and dispatch |
-| `vectorprime-optimizer` | Candidate generation, Tokio semaphore benchmark loop, best-result selector |
+| `vectorprime-optimizer` | 4-stage Bayesian/TPE optimization pipeline (hardware context, model context, runtime preselection, TPE search); result caching via `~/.llmforge/cache/` |
 | `vectorprime-export` | `Modelfile` writer, GGUF copy, metadata.json serialization |
 | `vectorprime-bindings` | PyO3 `#[pymodule]` wiring every crate into the `_vectorprime` extension module |
 
