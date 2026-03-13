@@ -29,16 +29,20 @@ pub mod search;
 pub mod selector;
 
 pub use estimate::estimate_llamacpp;
-pub use search::{bytes_per_param, default_base_config, generate_candidates, generate_stage_candidates};
+pub use search::{
+    bytes_per_param, default_base_config, generate_candidates, generate_stage_candidates,
+};
 pub use selector::select_best;
 
 use anyhow::Result;
-use vectorprime_core::{BenchmarkResult, HardwareProfile, ModelInfo, OptimizationResult, RuntimeConfig};
+use vectorprime_core::{
+    BenchmarkResult, HardwareProfile, ModelInfo, OptimizationResult, RuntimeConfig,
+};
 
-use bayes::{SearchSpace, TpeModel, thread_options_from_cores};
+use bayes::{thread_options_from_cores, SearchSpace, TpeModel};
 use search::{
-    HardwareContext, ModelContext, batch_size_for_model, estimate_max_gpu_layers,
-    gpu_layer_candidates, preselect_runtimes, quantization_candidates, thread_candidates,
+    batch_size_for_model, estimate_max_gpu_layers, gpu_layer_candidates, preselect_runtimes,
+    quantization_candidates, thread_candidates, HardwareContext, ModelContext,
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -49,7 +53,10 @@ use search::{
 /// PATH". Used to detect the "llama-cli not installed" scenario and replace
 /// failures with static estimates so the user receives a useful recommendation.
 fn all_llamacpp_not_installed(
-    results: &[(RuntimeConfig, anyhow::Result<vectorprime_core::BenchmarkResult>)],
+    results: &[(
+        RuntimeConfig,
+        anyhow::Result<vectorprime_core::BenchmarkResult>,
+    )],
 ) -> bool {
     use vectorprime_core::RuntimeKind;
     let llamacpp_results: Vec<_> = results
@@ -71,10 +78,16 @@ fn all_llamacpp_not_installed(
 /// Replace failed LlamaCpp entries with static hardware-aware estimates when
 /// `llama-cli` is absent. Returns the (possibly modified) result vec.
 fn apply_llamacpp_fallback(
-    results: Vec<(RuntimeConfig, anyhow::Result<vectorprime_core::BenchmarkResult>)>,
+    results: Vec<(
+        RuntimeConfig,
+        anyhow::Result<vectorprime_core::BenchmarkResult>,
+    )>,
     model: &ModelInfo,
     hw: &HardwareProfile,
-) -> Vec<(RuntimeConfig, anyhow::Result<vectorprime_core::BenchmarkResult>)> {
+) -> Vec<(
+    RuntimeConfig,
+    anyhow::Result<vectorprime_core::BenchmarkResult>,
+)> {
     if !all_llamacpp_not_installed(&results) {
         return results;
     }
@@ -99,7 +112,10 @@ fn apply_llamacpp_fallback(
 /// Deduplicates by using the innermost error in each chain so noisy
 /// multi-line errors don't produce dozens of identical reasons.
 fn collect_failure_reasons(
-    results: &[(RuntimeConfig, anyhow::Result<vectorprime_core::BenchmarkResult>)],
+    results: &[(
+        RuntimeConfig,
+        anyhow::Result<vectorprime_core::BenchmarkResult>,
+    )],
 ) -> Vec<String> {
     let mut seen = std::collections::BTreeSet::new();
     for (_, outcome) in results {
@@ -202,10 +218,7 @@ pub async fn run_optimization(
 
     // ── Stage 3: Runtime Preselection ─────────────────────────────────────────
     let selected_runtimes = preselect_runtimes(&hw_ctx, &model_ctx, &model.format);
-    eprintln!(
-        "[Stage 3/4] Preselected runtimes: {:?}",
-        selected_runtimes
-    );
+    eprintln!("[Stage 3/4] Preselected runtimes: {:?}", selected_runtimes);
 
     if selected_runtimes.is_empty() {
         return Err(anyhow::anyhow!(
@@ -237,7 +250,8 @@ pub async fn run_optimization(
 
     // Batch options: standard set; KV-cache default included.
     let batch_base = batch_size_for_model(&hw, &model);
-    let mut batch_set: std::collections::BTreeSet<u32> = [128u32, 256, 512].iter().cloned().collect();
+    let mut batch_set: std::collections::BTreeSet<u32> =
+        [128u32, 256, 512].iter().cloned().collect();
     batch_set.insert(batch_base);
     let batch_opts: Vec<u32> = batch_set.into_iter().collect();
 
@@ -263,8 +277,7 @@ pub async fn run_optimization(
     let mut all_failure_reasons: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
 
-    let mut init_results =
-        benchmark::run_benchmarks(initial_configs, &model, &hw).await;
+    let mut init_results = benchmark::run_benchmarks(initial_configs, &model, &hw).await;
     init_results = apply_llamacpp_fallback(init_results, &model, &hw);
 
     // Record failures and seed the TPE model from successful observations.
@@ -273,7 +286,11 @@ pub async fn run_optimization(
     let mut best_metrics_opt: Option<vectorprime_core::BenchmarkResult> = None;
     let mut best_tps: f64 = f64::NEG_INFINITY;
 
-    for (idx, ((cfg, outcome), pt)) in init_results.into_iter().zip(initial_points.iter()).enumerate() {
+    for (idx, ((cfg, outcome), pt)) in init_results
+        .into_iter()
+        .zip(initial_points.iter())
+        .enumerate()
+    {
         match outcome {
             Ok(metrics) => {
                 let score = metrics.tokens_per_sec;
@@ -325,8 +342,7 @@ pub async fn run_optimization(
             cfg.gpu_layers,
         );
 
-        let mut iter_results =
-            benchmark::run_benchmarks(vec![cfg.clone()], &model, &hw).await;
+        let mut iter_results = benchmark::run_benchmarks(vec![cfg.clone()], &model, &hw).await;
         iter_results = apply_llamacpp_fallback(iter_results, &model, &hw);
 
         for (result_cfg, outcome) in iter_results {
@@ -346,11 +362,7 @@ pub async fn run_optimization(
                     }
                 }
                 Err(e) => {
-                    eprintln!(
-                        "[Bayes iter {}/{N_ITER}] ERROR: {}",
-                        iter + 1,
-                        e
-                    );
+                    eprintln!("[Bayes iter {}/{N_ITER}] ERROR: {}", iter + 1, e);
                     let msg = e
                         .chain()
                         .last()
@@ -391,8 +403,7 @@ pub async fn run_optimization(
                 eprintln!(
                     "[Bayes final] Best config latency {:.1}ms exceeds limit {:.1}ms — \
                      falling back to cartesian search",
-                    result.metrics.latency_ms,
-                    limit,
+                    result.metrics.latency_ms, limit,
                 );
             } else {
                 return Ok(result);
@@ -481,10 +492,7 @@ pub async fn run_optimization_staged(
 
     // ── Stage 3: Runtime Preselection (prediction + pruning, no benchmarks) ───
     let selected_runtimes = preselect_runtimes(&hw_ctx, &model_ctx, &model.format);
-    eprintln!(
-        "[Stage 3/7] Preselected runtimes: {:?}",
-        selected_runtimes
-    );
+    eprintln!("[Stage 3/7] Preselected runtimes: {:?}", selected_runtimes);
 
     if selected_runtimes.is_empty() {
         return Err(anyhow::anyhow!(
@@ -635,14 +643,10 @@ pub async fn run_optimization_staged(
     // ── Stage 7: Final Benchmark (single confirmation run) ───────────────────
     eprintln!(
         "[Stage 7/7] Final benchmark: {:?}/{:?}/{} threads/{} gpu_layers",
-        best_config.runtime,
-        best_config.quantization,
-        best_config.threads,
-        best_config.gpu_layers
+        best_config.runtime, best_config.quantization, best_config.threads, best_config.gpu_layers
     );
 
-    let mut final_results =
-        benchmark::run_benchmarks(vec![best_config.clone()], &model, &hw).await;
+    let mut final_results = benchmark::run_benchmarks(vec![best_config.clone()], &model, &hw).await;
     final_results = apply_llamacpp_fallback(final_results, &model, &hw);
     for reason in collect_failure_reasons(&final_results) {
         all_failure_reasons.insert(reason);

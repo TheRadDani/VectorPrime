@@ -168,11 +168,9 @@ impl ModelContext {
         let workload = classify_workload(model);
 
         // FP16 memory: prefer the pre-computed field; fall back to param count.
-        let memory_fp16_mb = model.memory_footprint_mb.or_else(|| {
-            model
-                .param_count
-                .map(|p| p as f64 * 2.0 / 1_000_000.0)
-        });
+        let memory_fp16_mb = model
+            .memory_footprint_mb
+            .or_else(|| model.param_count.map(|p| p as f64 * 2.0 / 1_000_000.0));
 
         // KV pressure: true if KV cache exceeds 30% of VRAM, or 20% of RAM
         // when no GPU is available.
@@ -272,10 +270,7 @@ pub(crate) fn preselect_runtimes(
     let mut eligible: Vec<(RuntimeKind, u32)> = Vec::new();
     for (runtime, score, reason) in candidates {
         if let Some(why) = reason {
-            eprintln!(
-                "[Stage 3/7] Eliminated {:?}: {}",
-                runtime, why
-            );
+            eprintln!("[Stage 3/7] Eliminated {:?}: {}", runtime, why);
         } else {
             eligible.push((runtime, score));
         }
@@ -312,20 +307,17 @@ pub(crate) fn quantization_candidates(
                 QuantizationStrategy::Q4_K_M,
                 QuantizationStrategy::F16,
             ],
-            WorkloadType::Balanced => vec![
-                QuantizationStrategy::Q4_K_M,
-                QuantizationStrategy::Q8_0,
-            ],
+            WorkloadType::Balanced => {
+                vec![QuantizationStrategy::Q4_K_M, QuantizationStrategy::Q8_0]
+            }
         },
         ModelFormat::ONNX => match model_ctx.workload {
-            WorkloadType::MemoryBound => vec![
-                QuantizationStrategy::Int8,
-                QuantizationStrategy::F16,
-            ],
-            WorkloadType::ComputeBound | WorkloadType::Balanced => vec![
-                QuantizationStrategy::F16,
-                QuantizationStrategy::Int8,
-            ],
+            WorkloadType::MemoryBound => {
+                vec![QuantizationStrategy::Int8, QuantizationStrategy::F16]
+            }
+            WorkloadType::ComputeBound | WorkloadType::Balanced => {
+                vec![QuantizationStrategy::F16, QuantizationStrategy::Int8]
+            }
         },
     };
 
@@ -378,8 +370,7 @@ pub(crate) fn gpu_layer_candidates(
     // Cap at 2× the F16 estimate to avoid wildly optimistic values when VRAM
     // is very large relative to model size.
     let quant_ratio = 2.0_f64 / bytes_per_param(best_quant);
-    let predicted_f = (max_layers_f16 as f64 * quant_ratio)
-        .min(max_layers_f16 as f64 * 2.0);
+    let predicted_f = (max_layers_f16 as f64 * quant_ratio).min(max_layers_f16 as f64 * 2.0);
     let predicted = (predicted_f as u32).min(max_layers_f16.saturating_mul(2));
 
     // Suppress the ratio boost when the model clearly fits in VRAM at F16 —
@@ -526,7 +517,10 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
 ///
 /// Reused by both `generate_candidates` and `generate_stage_candidates` so the
 /// workload-aware ordering is applied consistently in both paths.
-fn quant_order_for_workload(format: &ModelFormat, workload: &WorkloadType) -> Vec<QuantizationStrategy> {
+fn quant_order_for_workload(
+    format: &ModelFormat,
+    workload: &WorkloadType,
+) -> Vec<QuantizationStrategy> {
     match format {
         ModelFormat::GGUF => {
             let mut quants = vec![

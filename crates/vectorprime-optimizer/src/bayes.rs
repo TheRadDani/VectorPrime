@@ -81,23 +81,19 @@ impl SearchSpace {
     /// value cannot be found in the option lists.
     pub fn encode(&self, cfg: &RuntimeConfig) -> ConfigPoint {
         let rt_val = find_normalized_idx(&self.runtimes, &cfg.runtime);
-        let q_val = find_normalized_idx_by(
-            self.quants.len(),
-            |i| self.quants[i] == cfg.quantization,
-        );
+        let q_val =
+            find_normalized_idx_by(self.quants.len(), |i| self.quants[i] == cfg.quantization);
         let gpu_val = if self.max_gpu_layers == 0 {
             0.0
         } else {
             (cfg.gpu_layers as f64 / self.max_gpu_layers as f64).clamp(0.0, 1.0)
         };
-        let t_val = find_normalized_idx_by(
-            self.thread_options.len(),
-            |i| self.thread_options[i] == cfg.threads,
-        );
-        let b_val = find_normalized_idx_by(
-            self.batch_options.len(),
-            |i| self.batch_options[i] == cfg.batch_size,
-        );
+        let t_val = find_normalized_idx_by(self.thread_options.len(), |i| {
+            self.thread_options[i] == cfg.threads
+        });
+        let b_val = find_normalized_idx_by(self.batch_options.len(), |i| {
+            self.batch_options[i] == cfg.batch_size
+        });
 
         ConfigPoint([rt_val, q_val, gpu_val, t_val, b_val])
     }
@@ -358,12 +354,11 @@ impl GpModel {
 
     /// RBF (squared-exponential) kernel:  k(a, b) = exp(−‖a−b‖² / (2l²))
     fn kernel(&self, a: &ConfigPoint, b: &ConfigPoint) -> f64 {
-        let sq_dist: f64 = a
-            .0
-            .iter()
-            .zip(b.0.iter())
-            .map(|(ai, bi)| (ai - bi).powi(2))
-            .sum();
+        let sq_dist: f64 =
+            a.0.iter()
+                .zip(b.0.iter())
+                .map(|(ai, bi)| (ai - bi).powi(2))
+                .sum();
         (-sq_dist / (2.0 * self.lengthscale.powi(2))).exp()
     }
 
@@ -383,16 +378,18 @@ impl GpModel {
                 (0..n)
                     .map(|j| {
                         let kij = self.kernel(&self.x_train[i], &self.x_train[j]);
-                        if i == j { kij + self.noise } else { kij }
+                        if i == j {
+                            kij + self.noise
+                        } else {
+                            kij
+                        }
                     })
                     .collect()
             })
             .collect();
 
         // k_star: kernel between x and each training point.
-        let k_star: Vec<f64> = (0..n)
-            .map(|i| self.kernel(x, &self.x_train[i]))
-            .collect();
+        let k_star: Vec<f64> = (0..n).map(|i| self.kernel(x, &self.x_train[i])).collect();
 
         // Solve (K + noise·I) α = y.
         let alpha = solve_linear(&mut k_mat.clone(), &self.y_train);
@@ -559,8 +556,7 @@ fn erf(x: f64) -> f64 {
     let t = 1.0 / (1.0 + 0.3275911 * x);
     let poly = t
         * (0.254829592
-            + t * (-0.284496736
-                + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+            + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
 
     sign * (1.0 - poly * (-x * x).exp())
 }
@@ -590,9 +586,7 @@ pub fn thread_options_from_cores(cores: u32) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vectorprime_core::{
-        CpuInfo, HardwareProfile, RamInfo, SimdLevel,
-    };
+    use vectorprime_core::{CpuInfo, HardwareProfile, RamInfo, SimdLevel};
 
     fn cpu_only_hw(cores: u32) -> HardwareProfile {
         HardwareProfile {
@@ -756,7 +750,10 @@ mod tests {
 
         let pt = model.suggest(24, 99);
         for &v in pt.0.iter() {
-            assert!((0.0..=1.0).contains(&v), "fallback point dim out of range: {v}");
+            assert!(
+                (0.0..=1.0).contains(&v),
+                "fallback point dim out of range: {v}"
+            );
         }
     }
 
@@ -803,7 +800,10 @@ mod tests {
                 assert!(v <= 64, "thread option {v} > 64");
             }
             // Sorted ascending
-            assert!(opts.windows(2).all(|w| w[0] <= w[1]), "not sorted: {opts:?}");
+            assert!(
+                opts.windows(2).all(|w| w[0] <= w[1]),
+                "not sorted: {opts:?}"
+            );
             // No duplicates
             for i in 1..opts.len() {
                 assert_ne!(opts[i - 1], opts[i], "duplicate in {opts:?}");
