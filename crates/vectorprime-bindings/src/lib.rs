@@ -251,14 +251,16 @@ fn parse_model_format(format: &str) -> PyResult<ModelFormat> {
 ///     If no valid configuration could be benchmarked, the path is invalid,
 ///     or an unrecognised GPU model string is supplied.
 #[pyfunction]
-#[pyo3(signature = (model_path, format, gpu=None, max_latency_ms=None, output_path=None))]
+#[pyo3(signature = (model_path, format, gpu=None, max_latency_ms=None, output_path=None, use_cache=true))]
 fn optimize(
     model_path: &str,
     format: &str,
     gpu: Option<String>,
     max_latency_ms: Option<f64>,
     output_path: Option<String>,
+    use_cache: bool,
 ) -> PyResult<PyOptimizationResult> {
+    let _ = use_cache; // parameter kept for API compatibility; caching handled internally
     let fmt = parse_model_format(format)?;
     let path = PathBuf::from(model_path);
 

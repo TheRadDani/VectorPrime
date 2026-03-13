@@ -112,128 +112,23 @@ fn classify_workload(model: &ModelInfo) -> WorkloadType {
 
 /// Generate the cross-product of (runtime × quantization × threads × gpu_layers)
 /// pruned to configs that are plausible on the given hardware.
+///
+/// Kept intact for backward compatibility and as a fallback. The staged
+/// optimizer uses `generate_stage_candidates` instead.
 pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<RuntimeConfig> {
-    let cores = hw.cpu.core_count;
-
-    // Thread counts: [cores/2, cores, cores*2] clamped to [1, 64].
-    let thread_counts: Vec<u32> = [cores / 2, cores, cores * 2]
-        .iter()
-        .map(|&t| t.clamp(1, 64))
-        .collect::<std::collections::BTreeSet<_>>() // deduplicate
-        .into_iter()
-        .collect();
-
-    // GPU layer options: VRAM-proportional steps from 0% to 100% offload.
-    // When no GPU is present, only cpu-only (0 layers) is considered.
-    let gpu_layer_options: Vec<u32> = if let Some(gpu) = &hw.gpu {
-        let max_layers = estimate_max_gpu_layers(gpu, model);
-        if max_layers == 0 {
-            vec![0]
-        } else {
-            // 5 evenly-spaced steps: 0, 25%, 50%, 75%, 100%
-            let steps = 4u32;
-            (0..=steps)
-                .map(|i| (max_layers * i / steps).min(max_layers))
-                .collect::<std::collections::BTreeSet<_>>()
-                .into_iter()
-                .collect()
-        }
-    } else {
-        vec![0]
-    };
-
     // Classify the workload to influence candidate ordering.
     // All quant/runtime combos are still generated; ordering only affects
     // which candidates are evaluated first (the scorer picks the final winner).
     let workload = classify_workload(model);
 
     // Per-format runtime + quantization pairings, ordered by workload type.
-    //
-    // Ollama supports GGUF models on any hardware (wraps llama.cpp internally).
-    // vLLM supports ONNX/HuggingFace models and requires a GPU for meaningful
-    // performance; it prefers F16/Q8_0 precision.
-    let combos: Vec<(RuntimeKind, QuantizationStrategy)> = match model.format {
-        ModelFormat::GGUF => {
-            let mut quants = vec![
-                QuantizationStrategy::Q4_K_M,
-                QuantizationStrategy::Q4_0,
-                QuantizationStrategy::Q8_0,
-                QuantizationStrategy::F16,
-            ];
-            // Reorder by workload: memory-bound prefers aggressive quants (already
-            // first). Compute-bound prefers precision-preserving formats.
-            match workload {
-                WorkloadType::ComputeBound => {
-                    // Move F16 and Q8_0 to the front so the scorer sees them first.
-                    quants.sort_by_key(|q| match q {
-                        QuantizationStrategy::F16 => 0,
-                        QuantizationStrategy::Q8_0 => 1,
-                        QuantizationStrategy::Q4_K_M => 2,
-                        QuantizationStrategy::Q4_0 => 3,
-                        _ => 4,
-                    });
-                }
-                WorkloadType::MemoryBound | WorkloadType::Balanced => {
-                    // Default ordering: aggressive quants first (Q4_K_M already at front).
-                }
-            }
+    let combos = runtime_quant_combos(&model.format, hw, &workload);
 
-            // Both LlamaCpp and Ollama support GGUF on any hardware.
-            // Ollama manages its own llama.cpp backend; interleave the same
-            // quantization options under both runtimes so the benchmarker can
-            // pick the faster of the two.
-            let mut combos: Vec<(RuntimeKind, QuantizationStrategy)> = Vec::new();
-            for q in &quants {
-                combos.push((RuntimeKind::LlamaCpp, q.clone()));
-                combos.push((RuntimeKind::Ollama, q.clone()));
-            }
-            combos
-        }
-
-        ModelFormat::ONNX => {
-            let mut v: Vec<(RuntimeKind, QuantizationStrategy)> = vec![
-                (RuntimeKind::OnnxRuntime, QuantizationStrategy::F16),
-                (RuntimeKind::OnnxRuntime, QuantizationStrategy::Int8),
-            ];
-            // TRT is NVIDIA-only; trtexec will handle GPU-specific compatibility.
-            if is_nvidia_gpu(hw) {
-                v.push((RuntimeKind::TensorRT, QuantizationStrategy::F16));
-                v.push((RuntimeKind::TensorRT, QuantizationStrategy::Int8));
-            }
-            // vLLM is GPU-accelerated; add it when any GPU is present.
-            // It only meaningfully competes on F16/Q8_0 — sub-8-bit quantizations
-            // fall back to float16 inside vLLM anyway (see vllm.rs).
-            if hw.gpu.is_some() {
-                v.push((RuntimeKind::Vllm, QuantizationStrategy::F16));
-                v.push((RuntimeKind::Vllm, QuantizationStrategy::Q8_0));
-            }
-            // For memory-bound ONNX workloads, move Int8 ahead of F16.
-            if matches!(workload, WorkloadType::MemoryBound) {
-                v.sort_by_key(|(rt, q)| match (rt, q) {
-                    (_, QuantizationStrategy::Int8 | QuantizationStrategy::Int4) => 0,
-                    _ => 1,
-                });
-            }
-            v
-        }
-    };
+    let thread_counts = thread_options(hw);
+    let gpu_layers_list = gpu_layer_options(hw, model);
 
     // KV-cache-aware batch sizing: reduce batch when KV cache pressure is high.
-    // A full-context KV cache consuming > 30% of VRAM leaves little room for
-    // activations, so we halve the batch to reduce runtime memory pressure.
-    let base_batch_size: u32 = 512;
-    let batch_size = if let (Some(kv_mb), Some(vram_mb)) = (
-        model.kv_cache_size_mb,
-        hw.gpu.as_ref().map(|g| g.vram_mb as f64),
-    ) {
-        if kv_mb > vram_mb * 0.3 {
-            (base_batch_size / 2).max(128)
-        } else {
-            base_batch_size
-        }
-    } else {
-        base_batch_size
-    };
+    let batch_size = batch_size_for(hw, model);
 
     let vram_budget_mb = hw.gpu.as_ref().map(|g| g.vram_mb as f64 * 0.9);
 
@@ -247,7 +142,7 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
         }
 
         for &threads in &thread_counts {
-            for &gpu_layers in &gpu_layer_options {
+            for &gpu_layers in &gpu_layers_list {
                 candidates.push(RuntimeConfig {
                     runtime: runtime.clone(),
                     quantization: quant.clone(),
@@ -260,6 +155,288 @@ pub fn generate_candidates(hw: &HardwareProfile, model: &ModelInfo) -> Vec<Runti
     }
 
     candidates
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Staged candidate generator
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Return the ordered list of quantization strategies for a given model format
+/// and workload type.
+///
+/// Reused by both `generate_candidates` and `generate_stage_candidates` so the
+/// workload-aware ordering is applied consistently in both paths.
+fn quant_order_for_workload(format: &ModelFormat, workload: &WorkloadType) -> Vec<QuantizationStrategy> {
+    match format {
+        ModelFormat::GGUF => {
+            let mut quants = vec![
+                QuantizationStrategy::Q4_K_M,
+                QuantizationStrategy::Q4_0,
+                QuantizationStrategy::Q8_0,
+                QuantizationStrategy::F16,
+            ];
+            if matches!(workload, WorkloadType::ComputeBound) {
+                quants.sort_by_key(|q| match q {
+                    QuantizationStrategy::F16 => 0,
+                    QuantizationStrategy::Q8_0 => 1,
+                    QuantizationStrategy::Q4_K_M => 2,
+                    QuantizationStrategy::Q4_0 => 3,
+                    _ => 4,
+                });
+            }
+            quants
+        }
+        ModelFormat::ONNX => {
+            // For ONNX the primary quant strategies tried are F16 and Int8.
+            // Memory-bound workloads prefer Int8 first.
+            if matches!(workload, WorkloadType::MemoryBound) {
+                vec![QuantizationStrategy::Int8, QuantizationStrategy::F16]
+            } else {
+                vec![QuantizationStrategy::F16, QuantizationStrategy::Int8]
+            }
+        }
+    }
+}
+
+/// Return the ordered list of (RuntimeKind, QuantizationStrategy) pairs for a
+/// given model format and hardware profile.
+///
+/// Reused across both the cartesian-product generator and the staged generator.
+fn runtime_quant_combos(
+    format: &ModelFormat,
+    hw: &HardwareProfile,
+    workload: &WorkloadType,
+) -> Vec<(RuntimeKind, QuantizationStrategy)> {
+    match format {
+        ModelFormat::GGUF => {
+            let quants = quant_order_for_workload(format, workload);
+            let mut combos: Vec<(RuntimeKind, QuantizationStrategy)> = Vec::new();
+            for q in &quants {
+                combos.push((RuntimeKind::LlamaCpp, q.clone()));
+                combos.push((RuntimeKind::Ollama, q.clone()));
+            }
+            combos
+        }
+        ModelFormat::ONNX => {
+            let mut v: Vec<(RuntimeKind, QuantizationStrategy)> = vec![
+                (RuntimeKind::OnnxRuntime, QuantizationStrategy::F16),
+                (RuntimeKind::OnnxRuntime, QuantizationStrategy::Int8),
+            ];
+            if is_nvidia_gpu(hw) {
+                v.push((RuntimeKind::TensorRT, QuantizationStrategy::F16));
+                v.push((RuntimeKind::TensorRT, QuantizationStrategy::Int8));
+            }
+            if hw.gpu.is_some() {
+                v.push((RuntimeKind::Vllm, QuantizationStrategy::F16));
+                v.push((RuntimeKind::Vllm, QuantizationStrategy::Q8_0));
+            }
+            if matches!(workload, WorkloadType::MemoryBound) {
+                v.sort_by_key(|(_, q)| match q {
+                    QuantizationStrategy::Int8 | QuantizationStrategy::Int4 => 0,
+                    _ => 1,
+                });
+            }
+            v
+        }
+    }
+}
+
+/// Return the thread count candidates for the given hardware.
+///
+/// Produces `[cores/2, cores, cores*2]` clamped to `[1, 64]`, deduplicated.
+fn thread_options(hw: &HardwareProfile) -> Vec<u32> {
+    let cores = hw.cpu.core_count;
+    [cores / 2, cores, cores * 2]
+        .iter()
+        .map(|&t| t.clamp(1, 64))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// Return the GPU layer count candidates for the given hardware and model.
+///
+/// Produces 5 evenly-spaced steps from 0 to `estimate_max_gpu_layers`.
+/// Returns `[0]` when no GPU is present.
+fn gpu_layer_options(hw: &HardwareProfile, model: &ModelInfo) -> Vec<u32> {
+    if let Some(gpu) = &hw.gpu {
+        let max_layers = estimate_max_gpu_layers(gpu, model);
+        if max_layers == 0 {
+            vec![0]
+        } else {
+            let steps = 4u32;
+            (0..=steps)
+                .map(|i| (max_layers * i / steps).min(max_layers))
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        }
+    } else {
+        vec![0]
+    }
+}
+
+/// Compute the KV-cache-aware batch size for the given model and hardware.
+///
+/// Uses 512 as the base, halved to 256 when KV cache pressure is high (KV
+/// cache > 30% of VRAM).
+fn batch_size_for(hw: &HardwareProfile, model: &ModelInfo) -> u32 {
+    let base: u32 = 512;
+    if let (Some(kv_mb), Some(vram_mb)) = (
+        model.kv_cache_size_mb,
+        hw.gpu.as_ref().map(|g| g.vram_mb as f64),
+    ) {
+        if kv_mb > vram_mb * 0.3 {
+            return (base / 2).max(128);
+        }
+    }
+    base
+}
+
+/// Return the default (sensible) starting `RuntimeConfig` for staged search.
+///
+/// Stage 1 will immediately vary the runtime field; the other fields provide
+/// reasonable defaults used as the base for all subsequent stages.
+pub fn default_base_config(hw: &HardwareProfile) -> vectorprime_core::RuntimeConfig {
+    vectorprime_core::RuntimeConfig {
+        runtime: RuntimeKind::LlamaCpp,
+        quantization: QuantizationStrategy::Q4_K_M,
+        threads: hw.cpu.core_count,
+        batch_size: 512,
+        gpu_layers: 0,
+    }
+}
+
+/// Generate candidates for a single stage of the staged optimization loop.
+///
+/// Each stage varies **one** parameter while keeping all other fields fixed to
+/// the best values discovered in prior stages (passed in via `base`).
+///
+/// | Stage | Parameter varied       |
+/// |-------|------------------------|
+/// | 1     | `RuntimeKind`          |
+/// | 2     | `QuantizationStrategy` |
+/// | 3     | `gpu_layers`           |
+/// | 4     | `threads`              |
+/// | 5     | `batch_size`           |
+///
+/// Any stage value outside 1–5 returns an empty `Vec`.
+pub fn generate_stage_candidates(
+    stage: u8,
+    base: &vectorprime_core::RuntimeConfig,
+    hw: &HardwareProfile,
+    model: &ModelInfo,
+) -> Vec<vectorprime_core::RuntimeConfig> {
+    let workload = classify_workload(model);
+    let vram_budget_mb = hw.gpu.as_ref().map(|g| g.vram_mb as f64 * 0.9);
+
+    match stage {
+        // Stage 1 — vary runtime (and paired quantization) keeping base
+        // threads/gpu_layers/batch_size fixed.
+        //
+        // We use the full (runtime, quant) combo list from the cartesian
+        // generator so the workload-aware ordering is preserved. The quant
+        // field travels with the runtime here; Stage 2 then sweeps all quant
+        // values under the winning runtime.
+        1 => {
+            let combos = runtime_quant_combos(&model.format, hw, &workload);
+            combos
+                .into_iter()
+                .filter_map(|(runtime, quant)| {
+                    // Prune by VRAM budget.
+                    if let (Some(budget), Some(vram)) =
+                        (vram_budget_mb, estimate_vram_mb(model, &quant))
+                    {
+                        if vram > budget {
+                            return None;
+                        }
+                    }
+                    Some(vectorprime_core::RuntimeConfig {
+                        runtime,
+                        quantization: quant,
+                        threads: base.threads,
+                        batch_size: base.batch_size,
+                        gpu_layers: base.gpu_layers,
+                    })
+                })
+                .collect()
+        }
+
+        // Stage 2 — vary quantization; keep best runtime from Stage 1 fixed.
+        //
+        // Uses the same workload-aware ordering as `generate_candidates` so
+        // memory-bound models still prefer aggressive quants.
+        2 => {
+            let quants = quant_order_for_workload(&model.format, &workload);
+            quants
+                .into_iter()
+                .filter_map(|quant| {
+                    if let (Some(budget), Some(vram)) =
+                        (vram_budget_mb, estimate_vram_mb(model, &quant))
+                    {
+                        if vram > budget {
+                            return None;
+                        }
+                    }
+                    Some(vectorprime_core::RuntimeConfig {
+                        runtime: base.runtime.clone(),
+                        quantization: quant,
+                        threads: base.threads,
+                        batch_size: base.batch_size,
+                        gpu_layers: base.gpu_layers,
+                    })
+                })
+                .collect()
+        }
+
+        // Stage 3 — vary gpu_layers; keep best runtime+quant fixed.
+        3 => gpu_layer_options(hw, model)
+            .into_iter()
+            .map(|gpu_layers| vectorprime_core::RuntimeConfig {
+                runtime: base.runtime.clone(),
+                quantization: base.quantization.clone(),
+                threads: base.threads,
+                batch_size: base.batch_size,
+                gpu_layers,
+            })
+            .collect(),
+
+        // Stage 4 — vary threads; keep best runtime+quant+gpu_layers fixed.
+        4 => thread_options(hw)
+            .into_iter()
+            .map(|threads| vectorprime_core::RuntimeConfig {
+                runtime: base.runtime.clone(),
+                quantization: base.quantization.clone(),
+                threads,
+                batch_size: base.batch_size,
+                gpu_layers: base.gpu_layers,
+            })
+            .collect(),
+
+        // Stage 5 — vary batch_size; keep all prior best values fixed.
+        // Try low / mid / high: 128, 256, 512.
+        5 => {
+            // Always include the KV-cache-aware default so Stage 5 can confirm
+            // or override it.
+            let kv_default = batch_size_for(hw, model);
+            let mut sizes: std::collections::BTreeSet<u32> =
+                [128u32, 256, 512].iter().cloned().collect();
+            sizes.insert(kv_default);
+
+            sizes
+                .into_iter()
+                .map(|batch_size| vectorprime_core::RuntimeConfig {
+                    runtime: base.runtime.clone(),
+                    quantization: base.quantization.clone(),
+                    threads: base.threads,
+                    batch_size,
+                    gpu_layers: base.gpu_layers,
+                })
+                .collect()
+        }
+
+        _ => vec![],
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
