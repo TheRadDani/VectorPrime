@@ -115,7 +115,7 @@ def cmd_optimize(args: argparse.Namespace) -> None:
 
     output: str | None = getattr(args, "output", None)
 
-    print("Running staged optimization (5 stages: runtime → quantization → GPU layers → threads → batch size)…")
+    print("Running 4-stage Bayesian optimization pipeline (hardware profiling → model analysis → runtime preselection → TPE Bayesian search)…")
     try:
         import vectorprime._vectorprime as _vectorprime  # type: ignore[import]
         result = _vectorprime.optimize(model_path, fmt, args.gpu, args.latency, output)
@@ -140,7 +140,7 @@ def cmd_optimize(args: argparse.Namespace) -> None:
 
     # Formatted summary.
     print(_divider())
-    print("VectorPrime Optimization Result  (staged, 5 stages)")
+    print("VectorPrime Optimization Result  (4-stage Bayesian / TPE)")
     print(_divider())
     print(f"Runtime:       {result.runtime}")
     print(f"Quantization:  {result.quantization}")
