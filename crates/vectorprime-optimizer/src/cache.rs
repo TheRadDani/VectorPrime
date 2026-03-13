@@ -55,8 +55,8 @@ pub fn cache_store(
     model: &ModelInfo,
     result: &OptimizationResult,
 ) -> Result<()> {
-    let key = compute_key(hw, model)
-        .ok_or_else(|| anyhow::anyhow!("could not compute cache key"))?;
+    let key =
+        compute_key(hw, model).ok_or_else(|| anyhow::anyhow!("could not compute cache key"))?;
     let path = cache_file_path(&key)
         .ok_or_else(|| anyhow::anyhow!("could not resolve cache directory"))?;
 
@@ -119,5 +119,9 @@ fn compute_key(hw: &HardwareProfile, model: &ModelInfo) -> Option<String> {
 /// Returns `None` when the home directory cannot be determined.
 fn cache_file_path(key: &str) -> Option<std::path::PathBuf> {
     let home = dirs::home_dir()?;
-    Some(home.join(".llmforge").join("cache").join(format!("{key}.json")))
+    Some(
+        home.join(".llmforge")
+            .join("cache")
+            .join(format!("{key}.json")),
+    )
 }
