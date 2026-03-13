@@ -36,7 +36,8 @@ pub use selector::select_best;
 
 use anyhow::Result;
 use vectorprime_core::{
-    BenchmarkResult, HardwareProfile, ModelInfo, OptimizationResult, RuntimeConfig,
+    BenchmarkResult, HardwareProfile, ModelInfo, OptimizationResult, RuntimeConfig, RuntimeError,
+    RuntimeKind,
 };
 
 use bayes::{thread_options_from_cores, SearchSpace, TpeModel};
@@ -46,19 +47,29 @@ use search::{
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
-// LlamaCpp fallback helper
+// Not-installed detection helpers
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// Return `true` when every LlamaCpp benchmark result failed with "not found in
-/// PATH". Used to detect the "llama-cli not installed" scenario and replace
-/// failures with static estimates so the user receives a useful recommendation.
+/// Return `true` when `e` (or any cause in its chain) is a
+/// [`RuntimeError::NotInstalled`].
+///
+/// Uses a type-safe downcast rather than string matching so that changes to the
+/// error message format cannot silently break the detection logic.
+fn is_not_installed(e: &anyhow::Error) -> bool {
+    e.chain().any(|c| {
+        c.downcast_ref::<RuntimeError>()
+            .map(|r| matches!(r, RuntimeError::NotInstalled { .. }))
+            .unwrap_or(false)
+    })
+}
+
+/// Return `true` when every LlamaCpp benchmark result failed with
+/// [`RuntimeError::NotInstalled`]. Used to detect the "llama-cli not installed"
+/// scenario and replace failures with static estimates so the user receives a
+/// useful recommendation.
 fn all_llamacpp_not_installed(
-    results: &[(
-        RuntimeConfig,
-        anyhow::Result<vectorprime_core::BenchmarkResult>,
-    )],
+    results: &[(RuntimeConfig, anyhow::Result<BenchmarkResult>)],
 ) -> bool {
-    use vectorprime_core::RuntimeKind;
     let llamacpp_results: Vec<_> = results
         .iter()
         .filter(|(cfg, _)| cfg.runtime == RuntimeKind::LlamaCpp)
@@ -67,27 +78,68 @@ fn all_llamacpp_not_installed(
         && llamacpp_results.iter().all(|(_, r)| {
             r.as_ref()
                 .err()
-                .map(|e| {
-                    e.chain()
-                        .any(|c| c.to_string().contains("was not found in PATH"))
-                })
+                .map(|e| is_not_installed(e))
                 .unwrap_or(false)
         })
+}
+
+/// Remove entries where the error is [`RuntimeError::NotInstalled`] for any
+/// runtime other than LlamaCpp (which is handled separately by
+/// `apply_llamacpp_fallback`). Prints a deduplicated warning per runtime kind
+/// so the user knows which binaries to install.
+///
+/// This prevents "no compatible runtimes found" errors caused by absent
+/// optional binaries (Ollama, TensorRT, etc.) when at least one runtime
+/// succeeded.
+fn drop_not_installed(
+    results: Vec<(RuntimeConfig, anyhow::Result<BenchmarkResult>)>,
+) -> Vec<(RuntimeConfig, anyhow::Result<BenchmarkResult>)> {
+    use std::collections::BTreeSet;
+
+    // Collect the unique runtime kinds that are NotInstalled for a warning.
+    let mut missing_runtimes: BTreeSet<String> = BTreeSet::new();
+
+    let filtered: Vec<_> = results
+        .into_iter()
+        .filter(|(cfg, outcome)| {
+            if let Err(e) = outcome {
+                if is_not_installed(e) {
+                    // Record the binary name from the error if available,
+                    // otherwise fall back to the runtime kind name.
+                    let label = e
+                        .chain()
+                        .find_map(|c| {
+                            c.downcast_ref::<RuntimeError>()
+                                .and_then(|r| match r {
+                                    RuntimeError::NotInstalled { binary, .. } => {
+                                        Some(binary.clone())
+                                    }
+                                    _ => None,
+                                })
+                        })
+                        .unwrap_or_else(|| format!("{:?}", cfg.runtime));
+                    missing_runtimes.insert(label);
+                    return false; // drop this entry
+                }
+            }
+            true // keep successes and non-NotInstalled errors
+        })
+        .collect();
+
+    for binary in &missing_runtimes {
+        eprintln!("[vectorprime] {binary} not found — skipping configs that require it");
+    }
+
+    filtered
 }
 
 /// Replace failed LlamaCpp entries with static hardware-aware estimates when
 /// `llama-cli` is absent. Returns the (possibly modified) result vec.
 fn apply_llamacpp_fallback(
-    results: Vec<(
-        RuntimeConfig,
-        anyhow::Result<vectorprime_core::BenchmarkResult>,
-    )>,
+    results: Vec<(RuntimeConfig, anyhow::Result<BenchmarkResult>)>,
     model: &ModelInfo,
     hw: &HardwareProfile,
-) -> Vec<(
-    RuntimeConfig,
-    anyhow::Result<vectorprime_core::BenchmarkResult>,
-)> {
+) -> Vec<(RuntimeConfig, anyhow::Result<BenchmarkResult>)> {
     if !all_llamacpp_not_installed(&results) {
         return results;
     }
@@ -97,7 +149,7 @@ fn apply_llamacpp_fallback(
     results
         .into_iter()
         .map(|(cfg, outcome)| {
-            if cfg.runtime == vectorprime_core::RuntimeKind::LlamaCpp && outcome.is_err() {
+            if cfg.runtime == RuntimeKind::LlamaCpp && outcome.is_err() {
                 let est = estimate::estimate_llamacpp(&cfg, model, hw);
                 (cfg, Ok(est))
             } else {
@@ -112,10 +164,7 @@ fn apply_llamacpp_fallback(
 /// Deduplicates by using the innermost error in each chain so noisy
 /// multi-line errors don't produce dozens of identical reasons.
 fn collect_failure_reasons(
-    results: &[(
-        RuntimeConfig,
-        anyhow::Result<vectorprime_core::BenchmarkResult>,
-    )],
+    results: &[(RuntimeConfig, anyhow::Result<BenchmarkResult>)],
 ) -> Vec<String> {
     let mut seen = std::collections::BTreeSet::new();
     for (_, outcome) in results {
@@ -131,10 +180,39 @@ fn collect_failure_reasons(
     seen.into_iter().collect()
 }
 
-/// Build the "no valid configuration" error from accumulated failure reasons
-/// and the optional latency constraint.
-fn no_config_error(failure_reasons: &[String], max_latency_ms: Option<f64>) -> anyhow::Error {
-    if failure_reasons.is_empty() {
+/// Collect the unique missing-binary names from a result set.
+///
+/// Returns an empty vec when no [`RuntimeError::NotInstalled`] errors are
+/// present. Used to build actionable "install X" hints in the final error.
+fn collect_missing_binaries(
+    results: &[(RuntimeConfig, anyhow::Result<BenchmarkResult>)],
+) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for (_, outcome) in results {
+        if let Err(e) = outcome {
+            for cause in e.chain() {
+                if let Some(RuntimeError::NotInstalled { binary, .. }) =
+                    cause.downcast_ref::<RuntimeError>()
+                {
+                    seen.insert(binary.clone());
+                }
+            }
+        }
+    }
+    seen.into_iter().collect()
+}
+
+/// Build the "no valid configuration" error from accumulated failure reasons,
+/// the set of missing binaries, and the optional latency constraint.
+///
+/// When missing binaries are provided, the error message lists which programs
+/// need to be installed so the user knows exactly what action to take.
+fn no_config_error(
+    failure_reasons: &[String],
+    missing_binaries: &[String],
+    max_latency_ms: Option<f64>,
+) -> anyhow::Error {
+    if failure_reasons.is_empty() && missing_binaries.is_empty() {
         if let Some(limit) = max_latency_ms {
             anyhow::anyhow!(
                 "no valid configuration found: no configuration meets the latency \
@@ -146,10 +224,25 @@ fn no_config_error(failure_reasons: &[String], max_latency_ms: Option<f64>) -> a
                  memory budget. Try freeing RAM or using a smaller model."
             )
         }
+    } else if !missing_binaries.is_empty() {
+        let binary_list = missing_binaries.join(", ");
+        let reasons = failure_reasons.join("; ");
+        if reasons.is_empty() {
+            anyhow::anyhow!(
+                "no compatible runtimes found — required runtime binaries are missing: {binary_list}\n\
+                 Install the missing programs and retry."
+            )
+        } else {
+            anyhow::anyhow!(
+                "no compatible runtimes found — required runtime binaries are missing: {binary_list}\n\
+                 Install the missing programs and retry.\n\
+                 Additional failure reasons: {reasons}"
+            )
+        }
     } else {
         let reasons = failure_reasons.join("; ");
         anyhow::anyhow!(
-            "no compatible runtimes found — install the required binaries and retry.\n\
+            "no compatible runtimes found — all benchmark attempts failed.\n\
              Failure reasons: {reasons}"
         )
     }
@@ -276,14 +369,22 @@ pub async fn run_optimization(
 
     let mut all_failure_reasons: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
+    // Track distinct binary names that were missing so we can produce an
+    // actionable "install X" error if all evaluations fail.
+    let mut all_missing_binaries: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
 
     let mut init_results = benchmark::run_benchmarks(initial_configs, &model, &hw).await;
+    for binary in collect_missing_binaries(&init_results) {
+        all_missing_binaries.insert(binary);
+    }
     init_results = apply_llamacpp_fallback(init_results, &model, &hw);
+    init_results = drop_not_installed(init_results);
 
     // Record failures and seed the TPE model from successful observations.
     let mut tpe = TpeModel::new(0.25);
     let mut best_config_opt: Option<RuntimeConfig> = None;
-    let mut best_metrics_opt: Option<vectorprime_core::BenchmarkResult> = None;
+    let mut best_metrics_opt: Option<BenchmarkResult> = None;
     let mut best_tps: f64 = f64::NEG_INFINITY;
 
     for (idx, ((cfg, outcome), pt)) in init_results
@@ -343,7 +444,11 @@ pub async fn run_optimization(
         );
 
         let mut iter_results = benchmark::run_benchmarks(vec![cfg.clone()], &model, &hw).await;
+        for binary in collect_missing_binaries(&iter_results) {
+            all_missing_binaries.insert(binary);
+        }
         iter_results = apply_llamacpp_fallback(iter_results, &model, &hw);
+        iter_results = drop_not_installed(iter_results);
 
         for (result_cfg, outcome) in iter_results {
             match outcome {
@@ -415,6 +520,7 @@ pub async fn run_optimization(
 
     // ── Fallback: all 12 evaluations failed — try cartesian ───────────────────
     let reasons: Vec<String> = all_failure_reasons.into_iter().collect();
+    let missing: Vec<String> = all_missing_binaries.into_iter().collect();
     eprintln!(
         "[Bayes final] No successful evaluations — falling back to cartesian search. \
          Failure reasons: {}",
@@ -427,7 +533,7 @@ pub async fn run_optimization(
 
     match run_optimization_cartesian(model, hw, max_latency_ms).await {
         Ok(r) => Ok(r),
-        Err(cartesian_err) => Err(no_config_error(&reasons, max_latency_ms)
+        Err(cartesian_err) => Err(no_config_error(&reasons, &missing, max_latency_ms)
             .context(format!("cartesian fallback also failed: {cartesian_err}"))),
     }
 }
@@ -460,6 +566,9 @@ pub async fn run_optimization_staged(
     // Accumulate failure reasons across all stages so we can report a useful
     // error if all stages ultimately produce nothing.
     let mut all_failure_reasons: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    // Track distinct missing binary names for actionable error messages.
+    let mut all_missing_binaries: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
 
     // ── Stage 1: Hardware Profiling (pure analysis) ───────────────────────────
@@ -535,8 +644,12 @@ pub async fn run_optimization_staged(
 
     {
         let mut results = benchmark::run_benchmarks(stage4_candidates, &model, &hw).await;
+        for binary in collect_missing_binaries(&results) {
+            all_missing_binaries.insert(binary);
+        }
         // Apply LlamaCpp fallback here (moved from old Stage 1 runtime sweep).
         results = apply_llamacpp_fallback(results, &model, &hw);
+        results = drop_not_installed(results);
         for reason in collect_failure_reasons(&results) {
             all_failure_reasons.insert(reason);
         }
@@ -585,7 +698,11 @@ pub async fn run_optimization_staged(
             .collect();
 
         let mut results = benchmark::run_benchmarks(stage5_candidates, &model, &hw).await;
+        for binary in collect_missing_binaries(&results) {
+            all_missing_binaries.insert(binary);
+        }
         results = apply_llamacpp_fallback(results, &model, &hw);
+        results = drop_not_installed(results);
         for reason in collect_failure_reasons(&results) {
             all_failure_reasons.insert(reason);
         }
@@ -625,7 +742,11 @@ pub async fn run_optimization_staged(
             .collect();
 
         let mut results = benchmark::run_benchmarks(stage6_candidates, &model, &hw).await;
+        for binary in collect_missing_binaries(&results) {
+            all_missing_binaries.insert(binary);
+        }
         results = apply_llamacpp_fallback(results, &model, &hw);
+        results = drop_not_installed(results);
         for reason in collect_failure_reasons(&results) {
             all_failure_reasons.insert(reason);
         }
@@ -647,7 +768,11 @@ pub async fn run_optimization_staged(
     );
 
     let mut final_results = benchmark::run_benchmarks(vec![best_config.clone()], &model, &hw).await;
+    for binary in collect_missing_binaries(&final_results) {
+        all_missing_binaries.insert(binary);
+    }
     final_results = apply_llamacpp_fallback(final_results, &model, &hw);
+    final_results = drop_not_installed(final_results);
     for reason in collect_failure_reasons(&final_results) {
         all_failure_reasons.insert(reason);
     }
@@ -655,6 +780,7 @@ pub async fn run_optimization_staged(
     select_best(final_results, &hw, max_latency_ms).ok_or_else(|| {
         no_config_error(
             &all_failure_reasons.into_iter().collect::<Vec<_>>(),
+            &all_missing_binaries.into_iter().collect::<Vec<_>>(),
             max_latency_ms,
         )
     })
@@ -687,12 +813,16 @@ pub async fn run_optimization_cartesian(
 
     let results = benchmark::run_benchmarks(candidates, &model, &hw).await;
 
-    // Collect unique failure reasons before consuming `results`.
+    // Collect unique failure reasons and missing binary names before the
+    // results are consumed by apply_llamacpp_fallback / drop_not_installed.
     let failure_reasons = collect_failure_reasons(&results);
+    let missing_binaries = collect_missing_binaries(&results);
 
-    // Apply the LlamaCpp fallback when llama-cli is absent.
+    // Apply the LlamaCpp fallback when llama-cli is absent, then silently
+    // drop entries for any other runtime whose binary is missing.
     let results = apply_llamacpp_fallback(results, &model, &hw);
+    let results = drop_not_installed(results);
 
     select_best(results, &hw, max_latency_ms)
-        .ok_or_else(|| no_config_error(&failure_reasons, max_latency_ms))
+        .ok_or_else(|| no_config_error(&failure_reasons, &missing_binaries, max_latency_ms))
 }
