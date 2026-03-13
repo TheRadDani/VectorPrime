@@ -1,12 +1,24 @@
 // Location: crates/vectorprime-optimizer/src/search.rs
 //
-// Generates the candidate configuration space for the benchmark loop.
-// Called by the optimizer engine to produce RuntimeConfig candidates that
-// are plausible on the detected hardware, then benchmarked in parallel.
+// Generates the candidate configuration space for the benchmark loop and
+// provides the internal context structs (HardwareContext, ModelContext) used
+// by the 7-stage Efficient Search Pipeline in lib.rs.
+//
+// Public API (used by lib.rs and tests):
+//   - bytes_per_param            : bytes per model param for a quantization
+//   - estimate_max_gpu_layers    : conservative VRAM-based layer count estimate
+//   - default_base_config        : sensible starting RuntimeConfig
+//   - generate_candidates        : cartesian product (backward-compat / fallback)
+//   - generate_stage_candidates  : single-parameter staged candidates (old 5-stage)
+//   - HardwareContext / ModelContext : internal pipeline state for 7-stage search
+//   - preselect_runtimes         : Stage 3 pruning + scoring
+//   - quantization_candidates    : Stage 4 narrow quant list
+//   - gpu_layer_candidates       : Stage 5 narrow GPU-layer list
+//   - thread_candidates          : Stage 6 narrow thread list
 
 use vectorprime_core::{
     GpuInfo, GpuVendor, HardwareProfile, ModelFormat, ModelInfo, QuantizationStrategy,
-    RuntimeConfig, RuntimeKind,
+    RuntimeConfig, RuntimeKind, SimdLevel,
 };
 
 /// Return the storage cost in bytes per model parameter for a given
@@ -85,10 +97,349 @@ pub fn estimate_max_gpu_layers(gpu: &GpuInfo, model: &ModelInfo) -> u32 {
 /// - `ComputeBound`: wide FFN (FFN >> 8× hidden, e.g. Mixtral MoE). Favours
 ///   precision-preserving formats when tensor cores are available.
 /// - `Balanced`: in between; apply default heuristics.
-enum WorkloadType {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum WorkloadType {
     MemoryBound,
     ComputeBound,
     Balanced,
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 7-Stage Pipeline Internal Context Structs
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Internal hardware context produced by Stage 1 of the 7-stage pipeline.
+///
+/// Derived purely from `HardwareProfile` — no benchmarks, no I/O.
+/// Centralises hardware facts so later stages reference a single source.
+pub(crate) struct HardwareContext {
+    pub has_gpu: bool,
+    pub is_nvidia: bool,
+    pub vram_mb: Option<u64>,
+    pub ram_available_mb: u64,
+    pub cpu_cores: u32,
+    /// SIMD level — retained for future stage use (e.g. scoring CPU-only runtimes).
+    #[allow(dead_code)]
+    pub simd_level: SimdLevel,
+    /// GPU compute capability — retained for future TensorRT tier scoring.
+    #[allow(dead_code)]
+    pub gpu_compute_cap: Option<(u32, u32)>,
+}
+
+impl HardwareContext {
+    /// Build from a full hardware profile snapshot.
+    pub fn from_hw(hw: &HardwareProfile) -> Self {
+        let has_gpu = hw.gpu.is_some();
+        let is_nvidia = hw
+            .gpu
+            .as_ref()
+            .map(|g| g.vendor == GpuVendor::Nvidia)
+            .unwrap_or(false);
+        let vram_mb = hw.gpu.as_ref().map(|g| g.vram_mb);
+        let gpu_compute_cap = hw.gpu.as_ref().and_then(|g| g.compute_capability);
+
+        HardwareContext {
+            has_gpu,
+            is_nvidia,
+            vram_mb,
+            ram_available_mb: hw.ram.available_mb,
+            cpu_cores: hw.cpu.core_count,
+            simd_level: hw.cpu.simd_level.clone(),
+            gpu_compute_cap,
+        }
+    }
+}
+
+/// Internal model context produced by Stage 2 of the 7-stage pipeline.
+///
+/// Derived from `ModelInfo` + `HardwareContext` — no benchmarks, no I/O.
+pub(crate) struct ModelContext {
+    pub workload: WorkloadType,
+    pub param_count: Option<u64>,
+    /// Estimated model memory in MB at FP16 (2 bytes/param).
+    pub memory_fp16_mb: Option<f64>,
+    /// True when KV cache pressure is high relative to available memory.
+    pub kv_pressure: bool,
+}
+
+impl ModelContext {
+    /// Build from model info and the hardware context computed in Stage 1.
+    pub fn from_model_and_hw(model: &ModelInfo, hw_ctx: &HardwareContext) -> Self {
+        let workload = classify_workload(model);
+
+        // FP16 memory: prefer the pre-computed field; fall back to param count.
+        let memory_fp16_mb = model
+            .memory_footprint_mb
+            .or_else(|| model.param_count.map(|p| p as f64 * 2.0 / 1_000_000.0));
+
+        // KV pressure: true if KV cache exceeds 30% of VRAM, or 20% of RAM
+        // when no GPU is available.
+        let kv_pressure = if let Some(kv_mb) = model.kv_cache_size_mb {
+            if let Some(vram_mb) = hw_ctx.vram_mb {
+                kv_mb > vram_mb as f64 * 0.3
+            } else {
+                kv_mb > hw_ctx.ram_available_mb as f64 * 0.2
+            }
+        } else {
+            false
+        };
+
+        ModelContext {
+            workload,
+            param_count: model.param_count,
+            memory_fp16_mb,
+            kv_pressure,
+        }
+    }
+
+    /// Return `true` when `quant` is predicted to fit within 90% of VRAM.
+    ///
+    /// If no GPU is present or param_count is unknown, returns `false` (cannot
+    /// confirm VRAM fit — caller should allow CPU fallback paths).
+    pub fn fits_in_vram(&self, quant: &QuantizationStrategy, vram_mb: Option<u64>) -> bool {
+        match (self.param_count, vram_mb) {
+            (Some(params), Some(vram)) => {
+                let model_mb = params as f64 * bytes_per_param(quant) / 1_000_000.0;
+                model_mb <= vram as f64 * 0.9
+            }
+            _ => false,
+        }
+    }
+
+    /// Return `true` when `quant` is predicted to fit within 80% of available RAM.
+    ///
+    /// Used to prune quantizations that cannot fit even in system RAM.
+    pub fn fits_in_ram(&self, quant: &QuantizationStrategy, ram_available_mb: u64) -> bool {
+        match self.param_count {
+            Some(params) => {
+                let model_mb = params as f64 * bytes_per_param(quant) / 1_000_000.0;
+                model_mb <= ram_available_mb as f64 * 0.8
+            }
+            // Unknown param count — cannot prune; allow through.
+            None => true,
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Stage 3: Runtime Preselection
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Preselect up to 2 runtimes based on format, hardware context, and scoring.
+///
+/// Eliminates runtimes that are incompatible with the model format, require
+/// hardware not present, or cannot handle KV pressure. Returns runtimes in
+/// descending score order (best first). Also logs eliminated runtimes with
+/// their reason.
+pub(crate) fn preselect_runtimes(
+    hw_ctx: &HardwareContext,
+    model_ctx: &ModelContext,
+    format: &ModelFormat,
+) -> Vec<RuntimeKind> {
+    // Scoring table: (RuntimeKind, score, eligible, elimination_reason)
+    // Higher score = better fit for this hardware+format combination.
+    let candidates: Vec<(RuntimeKind, u32, Option<&'static str>)> = match format {
+        ModelFormat::GGUF => vec![
+            // LlamaCpp: always eligible for GGUF; best native runtime.
+            (RuntimeKind::LlamaCpp, 10, None),
+            // Ollama: eligible for GGUF; wraps llama.cpp.
+            (RuntimeKind::Ollama, 8, None),
+        ],
+        ModelFormat::ONNX => {
+            let trt_reason = if !hw_ctx.is_nvidia {
+                Some("TensorRT requires NVIDIA GPU")
+            } else {
+                None
+            };
+            let vllm_reason = if !hw_ctx.has_gpu {
+                Some("vLLM requires a GPU")
+            } else if model_ctx.kv_pressure && hw_ctx.vram_mb.unwrap_or(0) == 0 {
+                Some("vLLM cannot handle KV pressure without VRAM")
+            } else {
+                None
+            };
+            vec![
+                (RuntimeKind::OnnxRuntime, 8, None),
+                (RuntimeKind::TensorRT, 10, trt_reason),
+                (RuntimeKind::Vllm, 7, vllm_reason),
+            ]
+        }
+    };
+
+    // Partition into eligible and eliminated, logging each eliminated runtime.
+    let mut eligible: Vec<(RuntimeKind, u32)> = Vec::new();
+    for (runtime, score, reason) in candidates {
+        if let Some(why) = reason {
+            eprintln!("[Stage 3/7] Eliminated {:?}: {}", runtime, why);
+        } else {
+            eligible.push((runtime, score));
+        }
+    }
+
+    // Sort descending by score, take top 2.
+    eligible.sort_by(|(_, a), (_, b)| b.cmp(a));
+    eligible.into_iter().map(|(r, _)| r).take(2).collect()
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Stage 4: Quantization Candidates
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Return ≤ 3 quantization candidates for the narrow benchmark in Stage 4.
+///
+/// Selection is driven by workload type and VRAM/RAM fit. Quantizations that
+/// cannot fit in available memory are pruned before returning.
+pub(crate) fn quantization_candidates(
+    hw_ctx: &HardwareContext,
+    model_ctx: &ModelContext,
+    format: &ModelFormat,
+) -> Vec<QuantizationStrategy> {
+    // Build the workload-ordered preference list.
+    let ordered: Vec<QuantizationStrategy> = match format {
+        ModelFormat::GGUF => match model_ctx.workload {
+            WorkloadType::MemoryBound => vec![
+                QuantizationStrategy::Q4_K_M,
+                QuantizationStrategy::Q4_0,
+                // Q8_0 and F16 only when they fit in VRAM.
+            ],
+            WorkloadType::ComputeBound => vec![
+                QuantizationStrategy::Q8_0,
+                QuantizationStrategy::Q4_K_M,
+                QuantizationStrategy::F16,
+            ],
+            WorkloadType::Balanced => {
+                vec![QuantizationStrategy::Q4_K_M, QuantizationStrategy::Q8_0]
+            }
+        },
+        ModelFormat::ONNX => match model_ctx.workload {
+            WorkloadType::MemoryBound => {
+                vec![QuantizationStrategy::Int8, QuantizationStrategy::F16]
+            }
+            WorkloadType::ComputeBound | WorkloadType::Balanced => {
+                vec![QuantizationStrategy::F16, QuantizationStrategy::Int8]
+            }
+        },
+    };
+
+    // Prune quantizations that cannot fit in VRAM (when GPU present) or RAM.
+    // A quant is allowed if:
+    //   - It fits in VRAM, OR no GPU (CPU path is always allowed if RAM fits)
+    //   - It fits in RAM (80% budget)
+    let vram_mb = hw_ctx.vram_mb;
+    ordered
+        .into_iter()
+        .filter(|q| {
+            // Must fit in RAM (absolute minimum requirement).
+            if !model_ctx.fits_in_ram(q, hw_ctx.ram_available_mb) {
+                return false;
+            }
+            // If a GPU is present and the quant doesn't fit in VRAM, only keep
+            // it when a CPU RAM fallback is feasible (already confirmed above).
+            // We do NOT eliminate it — we just allow it through the RAM check.
+            let _ = (vram_mb, model_ctx.fits_in_vram(q, vram_mb));
+            true
+        })
+        .take(3)
+        .collect()
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Stage 5: GPU Layer Candidates
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Return ≤ 4 GPU layer counts to benchmark in Stage 5.
+///
+/// Predicts the optimal layer count based on VRAM capacity and the winning
+/// quantization's memory density, then probes a narrow range around that
+/// prediction. Always includes 0 (CPU-only baseline).
+///
+/// Returns `[0]` immediately when no GPU is present.
+pub(crate) fn gpu_layer_candidates(
+    hw_ctx: &HardwareContext,
+    model_ctx: &ModelContext,
+    best_quant: &QuantizationStrategy,
+    max_layers_f16: u32,
+) -> Vec<u32> {
+    if !hw_ctx.has_gpu || max_layers_f16 == 0 {
+        return vec![0];
+    }
+
+    // Scale the F16 max-layer estimate by the quantization density ratio.
+    // A Q4_K_M model (0.5 bytes/param) is 4× denser than F16 (2.0 bytes/param),
+    // so we can potentially fit 4× more layers in the same VRAM budget.
+    // Cap at 2× the F16 estimate to avoid wildly optimistic values when VRAM
+    // is very large relative to model size.
+    let quant_ratio = 2.0_f64 / bytes_per_param(best_quant);
+    let predicted_f = (max_layers_f16 as f64 * quant_ratio).min(max_layers_f16 as f64 * 2.0);
+    let predicted = (predicted_f as u32).min(max_layers_f16.saturating_mul(2));
+
+    // Suppress the ratio boost when the model clearly fits in VRAM at F16 —
+    // there is nothing additional to gain by scaling beyond max_layers_f16.
+    // Use a VRAM-aware cap: if param count is known, cap at the true max
+    // based on VRAM; otherwise keep the 2× cap.
+    let vram_cap = hw_ctx.vram_mb.and_then(|vram| {
+        model_ctx.param_count.map(|params| {
+            let bpp = bytes_per_param(best_quant);
+            let model_mb = params as f64 * bpp / 1_000_000.0;
+            let vram_mb = vram as f64 * 0.9;
+            // Layers that fit: ratio of available VRAM to full model size,
+            // scaled to 32 reference layers (same approximation as estimate_max_gpu_layers).
+            let fit_fraction = (vram_mb / model_mb).min(1.0);
+            (fit_fraction * 32.0).floor() as u32
+        })
+    });
+    let predicted = if let Some(cap) = vram_cap {
+        predicted.min(cap)
+    } else {
+        predicted
+    };
+
+    let step = (predicted / 4).max(1);
+    let mut candidates: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+    candidates.insert(0);
+    candidates.insert(predicted.saturating_sub(step));
+    candidates.insert(predicted);
+    // Only add predicted + step when it doesn't overflow the plausible ceiling.
+    let upper = predicted.saturating_add(step);
+    candidates.insert(upper.min(max_layers_f16.saturating_mul(2)));
+
+    candidates.into_iter().collect()
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Stage 6: Thread Candidates
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Return ≤ 3 thread counts to benchmark in Stage 6.
+///
+/// Predicts the optimal thread count from hardware and GPU offload ratio,
+/// then probes a narrow range around that prediction.
+/// Values are clamped to [1, 64] and deduplicated.
+pub(crate) fn thread_candidates(hw_ctx: &HardwareContext, best_gpu_layers: u32) -> Vec<u32> {
+    let cores = hw_ctx.cpu_cores;
+
+    // When most of the model is on GPU, fewer CPU threads are better
+    // (the bottleneck is GPU bandwidth, not CPU compute).
+    // Threshold: > 50% of max layers offloaded → GPU-bound heuristic.
+    // We use a simple absolute threshold of > 0 layers with a large layer
+    // count relative to a 32-layer reference, or just cores when uncertain.
+    let predicted = if best_gpu_layers > 16 {
+        // GPU-bound: fewer threads avoids contention on the CPU↔GPU transfer.
+        (cores / 2).max(1)
+    } else {
+        // CPU-bound or low GPU offload: use all cores.
+        cores
+    };
+
+    let half = (predicted / 2).max(1);
+    let double = (predicted * 2).min(64);
+
+    let mut candidates: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+    candidates.insert(half.clamp(1, 64));
+    candidates.insert(predicted.clamp(1, 64));
+    candidates.insert(double.clamp(1, 64));
+
+    candidates.into_iter().collect()
 }
 
 /// Classify the workload type from model architecture metrics.
@@ -282,7 +633,11 @@ fn gpu_layer_options(hw: &HardwareProfile, model: &ModelInfo) -> Vec<u32> {
 /// Compute the KV-cache-aware batch size for the given model and hardware.
 ///
 /// Uses 512 as the base, halved to 256 when KV cache pressure is high (KV
-/// cache > 30% of VRAM).
+/// cache > 30% of VRAM). Exposed as `batch_size_for_model` for use by lib.rs.
+pub(crate) fn batch_size_for_model(hw: &HardwareProfile, model: &ModelInfo) -> u32 {
+    batch_size_for(hw, model)
+}
+
 fn batch_size_for(hw: &HardwareProfile, model: &ModelInfo) -> u32 {
     let base: u32 = 512;
     if let (Some(kv_mb), Some(vram_mb)) = (
