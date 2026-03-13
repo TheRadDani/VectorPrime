@@ -29,6 +29,10 @@
 
 ---
 
+<p align="center">
+  <img src="assets/vectorprime.png" alt="Vector Prime Banner">
+</p>
+
 VectorPrime takes a model file and your hardware, then finds the fastest way to run it. It profiles your CPU, GPU, and RAM; parses the model's intermediate representation to extract architecture metadata; generates every valid combination of runtime, quantization, thread count, and GPU offload layers; benchmarks candidates in parallel; and hands you back the configuration that maximizes tokens per second within your memory budget. The result is a ready-to-use Ollama bundle — no guesswork required.
 
 VectorPrime is built for developers and researchers who run inference locally and want reproducible, hardware-specific performance without manually tuning runtime flags or hunting for the right quantization format. The Rust backend handles parallel benchmarking and hardware detection; a PyO3 native extension exposes everything through a clean Python API and a single `pip install vectorprime`.
