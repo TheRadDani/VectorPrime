@@ -184,37 +184,90 @@ def _derive_capabilities(hw: dict) -> dict:
     }
 
 
-def _derive_recommendation(hw: dict, caps: dict) -> dict:
+def _derive_recommendation(hw: dict, caps: dict, installed_runtimes: dict) -> dict:
     """Derive runtime and precision recommendations from hardware and capabilities.
+
+    Runtime recommendations are ordered by suitability for the detected hardware
+    class and filtered to only runtimes confirmed as installed.  If nothing in
+    the priority list is installed the full priority list is returned as
+    aspirational recommendations (so the caller still gets a useful answer).
+
+    Precision recommendations are based solely on hardware capabilities and do
+    not depend on installed software.
 
     Args:
         hw: Parsed hardware profile dict.
         caps: Capability flags from _derive_capabilities().
+        installed_runtimes: Boolean dict from _check_runtime_support().
 
     Returns:
         A dict with 'preferred_runtime' and 'preferred_precision' lists.
+        Values are human-readable display strings (e.g. "llama.cpp", "FP16").
     """
     gpu = hw.get("gpu")
     vendor = (gpu.get("vendor", "") if gpu else "").lower()
-    if caps.get("tensorrt_supported"):
-        return {
-            "preferred_runtime": ["TensorRT", "llama.cpp"],
-            "preferred_precision": ["FP16", "INT8"],
-        }
-    if gpu and vendor == "nvidia":
-        return {
-            "preferred_runtime": ["llama.cpp", "ONNX Runtime"],
-            "preferred_precision": ["FP16", "INT8"],
-        }
-    if gpu:
-        return {
-            "preferred_runtime": ["llama.cpp", "ONNX Runtime"],
-            "preferred_precision": ["FP16", "INT8"],
-        }
-    # CPU-only
+    cpu = hw.get("cpu", {})
+    simd_level = cpu.get("simd_level", "")
+
+    cap = (gpu.get("compute_capability", [0, 0]) if gpu else [0, 0])
+    cap_tuple = tuple(cap[:2]) if len(cap) >= 2 else (0, 0)
+
+    is_nvidia = vendor == "nvidia"
+    is_amd = vendor == "amd"
+    is_apple = vendor in ("apple", "metal")
+
+    # --- Runtime priority list (keys from _check_runtime_support) ---
+    if is_nvidia and cap_tuple >= (7, 0):
+        # Volta and above: TensorRT is the optimal choice.
+        priority = ["tensorrt", "vllm", "onnx_runtime", "llama_cpp", "ollama"]
+    elif is_nvidia:
+        # Pascal and older NVIDIA: no TensorRT Tensor Core benefit.
+        priority = ["vllm", "onnx_runtime", "llama_cpp", "ollama"]
+    elif is_amd:
+        priority = ["llama_cpp", "onnx_runtime", "ollama"]
+    elif is_apple:
+        priority = ["llama_cpp", "onnx_runtime", "ollama"]
+    elif gpu:
+        # Unknown GPU vendor — safe defaults.
+        priority = ["llama_cpp", "onnx_runtime", "ollama"]
+    else:
+        # CPU-only.
+        priority = ["llama_cpp", "ollama", "onnx_runtime"]
+
+    # Filter priority list to installed runtimes; fall back to full list if
+    # nothing is installed (aspirational recommendations).
+    installed_priority = [k for k in priority if installed_runtimes.get(k)]
+    effective_priority = installed_priority if installed_priority else priority
+    preferred_runtime = [_RUNTIME_LABELS[k] for k in effective_priority]
+
+    # --- Precision based on hardware capabilities only ---
+    if is_nvidia and cap_tuple >= (8, 0):
+        # Ampere / Ada / Hopper: full Tensor Core support including INT4.
+        preferred_precision = ["FP16", "INT8", "INT4"]
+    elif is_nvidia and cap_tuple >= (7, 0):
+        # Volta / Turing: Tensor Cores for FP16 and INT8.
+        preferred_precision = ["FP16", "INT8"]
+    elif is_nvidia:
+        # Pascal and older: no Tensor Cores.
+        preferred_precision = ["FP32", "FP16"]
+    elif is_amd or is_apple:
+        # ROCm and Metal MPS both support FP16 and INT8.
+        preferred_precision = ["FP16", "INT8"]
+    elif gpu:
+        # Unknown GPU.
+        preferred_precision = ["FP16", "INT8"]
+    else:
+        # CPU-only: choose quantized formats based on available SIMD.
+        if simd_level == "AVX512":
+            preferred_precision = ["INT8", "Q4_K_M", "Q8_0"]
+        elif simd_level == "AVX2":
+            preferred_precision = ["Q4_K_M", "Q8_0", "INT8"]
+        else:
+            preferred_precision = ["Q4_K_M", "Q8_0"]
+
     return {
-        "preferred_runtime": ["llama.cpp"],
-        "preferred_precision": ["INT8", "Q4_K_M"],
+        "preferred_runtime": preferred_runtime,
+        "preferred_precision": preferred_precision,
     }
 
 
@@ -375,18 +428,34 @@ def _get_gpu_bandwidth(gpu_name: str) -> str:
 
 
 def _check_runtime_support() -> dict:
-    """Check which inference runtimes are present on PATH.
+    """Check which inference runtimes are available on this system.
+
+    Uses PATH probing for binary runtimes and importlib.util.find_spec for
+    Python-package-based runtimes (onnxruntime, vllm) to avoid importing them.
 
     Returns:
-        Dict mapping runtime name to availability status string.
+        Dict mapping internal runtime keys to booleans.
+        Keys: "llama_cpp", "ollama", "tensorrt", "onnx_runtime", "vllm".
     """
-    checks = {
-        "llama.cpp":     shutil.which("llama-cli") or shutil.which("llama-server"),
-        "ONNX Runtime":  shutil.which("python3"),   # onnxruntime is a Python package
-        "TensorRT":      shutil.which("trtexec"),
-        "vLLM":          shutil.which("vllm"),
+    import importlib.util
+
+    return {
+        "llama_cpp":    bool(shutil.which("llama-cli") or shutil.which("llama-server")),
+        "ollama":       shutil.which("ollama") is not None,
+        "tensorrt":     shutil.which("trtexec") is not None,
+        "onnx_runtime": importlib.util.find_spec("onnxruntime") is not None,
+        "vllm":         importlib.util.find_spec("vllm") is not None,
     }
-    return {name: ("Supported" if binary else "Not found") for name, binary in checks.items()}
+
+
+# Human-readable display labels for each internal runtime key.
+_RUNTIME_LABELS: dict = {
+    "tensorrt":     "TensorRT",
+    "vllm":         "vLLM",
+    "onnx_runtime": "ONNX Runtime",
+    "llama_cpp":    "llama.cpp",
+    "ollama":       "Ollama",
+}
 
 
 def _print_pretty_profile(hw: dict, caps: dict, rec: dict) -> None:
@@ -466,13 +535,14 @@ def _print_pretty_profile(hw: dict, caps: dict, rec: dict) -> None:
     print("Tip: run `vectorprime profile --verbose` for full hardware diagnostics.")
 
 
-def _print_verbose_profile(hw: dict, caps: dict, rec: dict) -> None:
+def _print_verbose_profile(hw: dict, caps: dict, rec: dict, installed_runtimes: dict) -> None:
     """Print the full verbose hardware diagnostic report.
 
     Args:
-        hw:   Parsed hardware profile dict.
-        caps: Capability flags from _derive_capabilities().
-        rec:  Recommendations from _derive_recommendation().
+        hw:                Parsed hardware profile dict.
+        caps:              Capability flags from _derive_capabilities().
+        rec:               Recommendations from _derive_recommendation().
+        installed_runtimes: Boolean dict from _check_runtime_support().
     """
     heavy_div = "═" * 39
     div = "─" * 39
@@ -483,7 +553,6 @@ def _print_verbose_profile(hw: dict, caps: dict, rec: dict) -> None:
     cpu_verbose = _get_verbose_cpu_info(hw)
     mem_verbose = _get_verbose_mem_info()
     nvidia_info = _get_nvidia_smi_info() if gpu else {"cuda_version": "N/A", "driver_version": "N/A"}
-    runtime_compat = _check_runtime_support()
 
     print("VectorPrime Hardware Diagnostic Report")
     print(heavy_div)
@@ -542,10 +611,11 @@ def _print_verbose_profile(hw: dict, caps: dict, rec: dict) -> None:
     print(f"  {'INT8 Inference:':<22} {int8_avail}")
     print()
 
-    # Runtime compatibility.
+    # Runtime compatibility — display clean labels with Supported / Not found status.
     print("Runtime Compatibility")
-    for runtime, status in runtime_compat.items():
-        print(f"  {(runtime + ':'):<22} {status}")
+    for key, label in _RUNTIME_LABELS.items():
+        status = "Supported" if installed_runtimes.get(key) else "Not found"
+        print(f"  {(label + ':'):<22} {status}")
     print()
 
     # VectorPrime optimization hints.
@@ -600,7 +670,8 @@ def cmd_profile(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     caps = _derive_capabilities(hw)
-    rec = _derive_recommendation(hw, caps)
+    installed_runtimes = _check_runtime_support()
+    rec = _derive_recommendation(hw, caps, installed_runtimes)
 
     # Determine output mode. --verbose takes precedence over --json.
     verbose: bool = getattr(args, "verbose", False)
@@ -608,7 +679,7 @@ def cmd_profile(args: argparse.Namespace) -> None:
     save_path: str | None = getattr(args, "save", None)
 
     if verbose:
-        _print_verbose_profile(hw, caps, rec)
+        _print_verbose_profile(hw, caps, rec, installed_runtimes)
         return
 
     if as_json or save_path:
