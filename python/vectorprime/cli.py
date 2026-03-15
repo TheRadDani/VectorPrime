@@ -26,20 +26,16 @@ def _print_logo() -> None:
 
 
 def _print_fancy_header() -> None:
-    """Print fancy VectorPrime header with styling."""
-    # Print logo first
-    _print_logo()
-    print()
-    
+    """Print fancy VectorPrime header with styling."""    
     # Print fancy VectorPrime text with colors
-    print("""
-██    ██ ███████  ██████ ████████  ██████  ██████  ██████  ██████  ██ ███    ███ ███████ 
-██    ██ ██      ██         ██    ██    ██ ██   ██ ██   ██ ██   ██ ██ ████  ████ ██      
-██    ██ █████   ██         ██    ██    ██ ██████  ██████  ██████  ██ ██ ████ ██ █████   
- ██  ██  ██      ██         ██    ██    ██ ██   ██ ██      ██   ██ ██ ██  ██  ██ ██      
-  ████   ███████  ██████    ██     ██████  ██   ██ ██      ██   ██ ██ ██      ██ ███████                                
-                                                                                                                                                     
+    print("""                                                      
+██  ██ ██████ ▄█████ ██████ ▄████▄ █████▄  █████▄ █████▄  ██ ██▄  ▄██ ██████ 
+██▄▄██ ██▄▄   ██       ██   ██  ██ ██▄▄██▄ ██▄▄█▀ ██▄▄██▄ ██ ██ ▀▀ ██ ██▄▄   
+ ▀██▀  ██▄▄▄▄ ▀█████   ██   ▀████▀ ██   ██ ██     ██   ██ ██ ██    ██ ██▄▄▄▄                                                                                                                                                                                                                                     
     """)
+    print()
+    # Print logo
+    _print_logo()
     print()
     sys.stdout.flush()  # Force output to display immediately
 
