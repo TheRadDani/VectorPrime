@@ -52,7 +52,7 @@ VectorPrime is built for developers and researchers who run inference locally an
 | Ollama export | Generates a `Modelfile` with tuned `num_thread` and `num_gpu` values, ready for `ollama create` | Stable |
 | Format conversion | Bidirectional GGUF-to-ONNX and ONNX-to-GGUF conversion with full metadata round-trip | Stable |
 | Python API | PyO3 native extension — import and call from any Python script or notebook | Stable |
-| CLI interface | `profile`, `optimize`, `convert-to-onnx`, and `convert-to-gguf` subcommands | Stable |
+| CLI interface | `profile` (with `--json`, `--verbose`, `--save`), `optimize`, `convert-to-onnx`, `convert-to-gguf`, and `doctor` subcommands | Stable |
 
 ---
 
@@ -118,15 +118,203 @@ VectorPrime detects which runtimes are available at startup and silently skips a
 vectorprime profile
 ```
 
-Prints a JSON hardware profile to stdout:
+Prints a human-readable hardware summary to stdout:
+
+```
+VectorPrime Hardware Profile
+────────────────────────────────────────
+
+CPU
+  Model:                 Intel Core i9-14900HX
+  Cores:                 32 threads
+  SIMD Support:          AVX2
+
+GPU
+  Model:                 NVIDIA GeForce RTX 4090 Laptop GPU
+  Vendor:                NVIDIA
+  VRAM:                  16.0 GB
+  Compute Capability:    8.9
+  Tensor Cores:          Yes
+
+Memory
+  Total RAM:             31.9 GB
+  Available RAM:         29.9 GB
+
+Acceleration Support
+  ✓ GPU inference available
+  ✓ FP16 supported
+  ✓ INT8 supported
+  ✓ TensorRT compatible
+
+Recommended Inference Setup
+  Runtime:               TensorRT / llama.cpp
+  Precision:             FP16 or INT8
+  Estimated Model Capacity:
+      • ~70B quantized
+      • ~13B full GPU
+
+Tip: run `vectorprime profile --verbose` for full hardware diagnostics.
+```
+
+**Options:**
+
+```
+vectorprime profile [OPTIONS]
+
+Options:
+  --json        Output the full hardware profile as structured JSON to stdout.
+  --verbose     Show a detailed hardware diagnostic report including clock speed,
+                SIMD features, CUDA/driver versions, runtime compatibility, and
+                optimization hints.
+  --save PATH   Save the JSON profile to a file. Can be combined with --json to
+                print JSON to stdout and save to a file simultaneously.
+```
+
+#### JSON output (`--json`)
+
+```bash
+vectorprime profile --json
+```
 
 ```json
 {
-  "cpu": { "core_count": 16, "simd_level": "AVX2" },
-  "gpu": { "name": "NVIDIA GeForce RTX 4090", "vram_mb": 24564, "compute_capability": [8, 9] },
-  "ram": { "total_mb": 65536, "available_mb": 48000 }
+  "cpu": {
+    "brand": "Intel(R) Core(TM) i9-14900HX",
+    "core_count": 32,
+    "simd_level": "AVX2"
+  },
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 4090 Laptop GPU",
+    "vendor": "Nvidia",
+    "vram_mb": 16376,
+    "compute_capability": [8, 9],
+    "tensor_cores": true
+  },
+  "ram": {
+    "total_mb": 31941,
+    "available_mb": 29935
+  },
+  "capabilities": {
+    "gpu_inference": true,
+    "fp16": true,
+    "int8": true,
+    "tensorrt_supported": true,
+    "tensor_cores": true
+  },
+  "recommendation": {
+    "preferred_runtime": ["TensorRT", "llama.cpp"],
+    "preferred_precision": ["FP16", "INT8"]
+  }
 }
 ```
+
+#### Save to file (`--save`)
+
+```bash
+vectorprime profile --save hw.json
+# Hardware profile saved to: hw.json
+
+vectorprime profile --json --save hw.json
+# Prints JSON to stdout AND saves to hw.json
+```
+
+#### Verbose diagnostics (`--verbose`)
+
+```bash
+vectorprime profile --verbose
+```
+
+```
+VectorPrime Hardware Diagnostic Report
+═══════════════════════════════════════
+
+CPU
+  Model:                 Intel Core i9-14900HX
+  Architecture:          x86_64
+  Physical Cores:        24
+  Logical Threads:       32
+  Base Clock:            2.2 GHz
+  SIMD Features:         SSE4, AVX, AVX2
+  L3 Cache:              36 MB
+
+GPU
+  Model:                 NVIDIA GeForce RTX 4090 Laptop GPU
+  Vendor:                NVIDIA
+  Compute Capability:    8.9
+  VRAM:                  16.0 GB
+  Tensor Cores:          Yes
+  CUDA Version:          12.4
+  Driver Version:        550.xx
+  Memory Bandwidth:      ~576 GB/s
+
+System Memory
+  Total RAM:             31.9 GB
+  Available RAM:         29.9 GB
+  Swap:                  8.0 GB
+
+Acceleration Support
+  CUDA:                  Available
+  TensorRT:              Compatible
+  FP16 Inference:        Supported
+  INT8 Inference:        Supported
+
+Runtime Compatibility
+  llama.cpp:             Supported (CPU + GPU offload)
+  ONNX Runtime:          Supported
+  TensorRT:              Supported
+  vLLM:                  Supported
+
+VectorPrime Optimization Hints
+  Recommended Runtime:       TensorRT / llama.cpp
+  Recommended Precision:     FP16 / INT8
+  Suggested Threads:         16–32
+  GPU Offload Capacity:      High
+
+System Readiness
+  ✓ CUDA driver detected
+  ✓ GPU compute capability supported
+  ✓ Sufficient VRAM for large LLMs
+
+System ready for optimized LLM inference.
+```
+
+### Check System Readiness (`doctor`)
+
+```bash
+vectorprime doctor
+```
+
+Probes for required inference components and reports which are available:
+
+```
+VectorPrime System Check
+────────────────────────
+
+✓ CUDA installed
+✓ GPU driver detected
+✓ TensorRT available
+✓ llama.cpp GPU support
+
+System ready for optimized inference.
+```
+
+If a component is missing, its line shows `✗` and the summary changes to:
+
+```
+✗ TensorRT available
+✗ llama.cpp GPU support
+
+Some components missing — see above.
+```
+
+The doctor command checks:
+
+| Component | Detection method |
+|---|---|
+| CUDA installed | `nvidia-smi` on PATH |
+| GPU driver detected | `nvidia-smi` on PATH |
+| TensorRT available | `trtexec` on PATH |
+| llama.cpp GPU support | `llama-cli` or `llama-server` on PATH |
 
 ### Optimize a Model
 
