@@ -2,6 +2,50 @@
 
 import argparse
 import sys
+import os
+
+
+def _print_logo() -> None:
+    """Print the Optimus Prime ASCII art logo from assets."""
+    try:
+        # Get the path to the logo file relative to this module
+        # cli.py is at: /home/daniel/VectorPrime/python/vectorprime/cli.py
+        # We need to go up 2 levels to get: /home/daniel/VectorPrime/
+        current_dir = os.path.dirname(os.path.abspath(__file__))    # vectorprime/
+        package_dir = os.path.dirname(current_dir)                  # python/
+        project_root = os.path.dirname(package_dir)                 # VectorPrime/
+        logo_path = os.path.join(project_root, "assets", "optimus_prime_logo.txt")
+        
+        if os.path.exists(logo_path):
+            with open(logo_path, "r", encoding="utf-8") as f:
+                logo_content = f.read()
+                print(logo_content)
+    except Exception as e:
+        # Silently fail if logo cannot be loaded
+        pass
+
+
+def _print_fancy_header() -> None:
+    """Print fancy VectorPrime header with styling."""
+    # ANSI color codes
+    BOLD = "\033[1m"
+    CYAN = "\033[36m"
+    MAGENTA = "\033[35m"
+    YELLOW = "\033[33m"
+    RESET = "\033[0m"
+    
+    # Print logo first
+    _print_logo()
+    print()
+    
+    # Print fancy VectorPrime text with colors
+    header = f"{BOLD}{CYAN}╔════════════════════════════════════════╗{RESET}"
+    print(header)
+    print(f"{BOLD}{CYAN}║{RESET} {MAGENTA}⚡ VectorPrime - LLM Optimizer ⚡{RESET} {BOLD}{CYAN}║{RESET}")
+    print(f"{BOLD}{CYAN}║{RESET} {YELLOW}Hardware-Aware Inference Engine{RESET}       {BOLD}{CYAN}║{RESET}")
+    print(f"{BOLD}{CYAN}╚════════════════════════════════════════╝{RESET}")
+    print()
+    sys.stdout.flush()  # Force output to display immediately
 
 
 def detect_format(path: str) -> str:
@@ -310,6 +354,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    # Display fancy header with logo
+    _print_fancy_header()
+    
     parser = build_parser()
     args = parser.parse_args()
 
