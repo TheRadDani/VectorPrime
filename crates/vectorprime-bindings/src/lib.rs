@@ -312,15 +312,19 @@ fn optimize(
     // `{stem}-optimized.gguf` placed next to the input file.
     let derived_output = derive_output_path(&path, output_path.as_deref());
 
-    // Attempt re-quantization; if llama-quantize is absent we degrade
-    // gracefully rather than failing the whole optimization.
+    // Attempt re-quantization; if llama-quantize is absent or fails we degrade
+    // gracefully rather than failing the whole optimization, but we surface the
+    // error so the user can see the actual failure reason.
     let quantized_path = match vectorprime_export::quantize_gguf(
         &path,
         &derived_output,
         &result.config.quantization,
     ) {
         Ok(()) => Some(derived_output),
-        Err(_) => None,
+        Err(e) => {
+            eprintln!("[vectorprime] Warning: quantization failed: {e}");
+            None
+        }
     };
 
     Ok(PyOptimizationResult {

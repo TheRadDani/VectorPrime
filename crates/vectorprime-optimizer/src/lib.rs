@@ -264,15 +264,19 @@ const N_CANDIDATES: usize = 24;
 ///
 /// **Stage 4** runs a Tree-structured Parzen Estimator (TPE) over the remaining
 /// parameter space (runtime × quantization × gpu_layers × threads × batch_size).
+/// Scores are obtained via hardware-aware estimation (`estimate_llamacpp`) rather
+/// than live inference, so no external binaries are required and the function
+/// returns immediately.
 ///
-/// | Stage | Name                    | Benchmarks             |
-/// |-------|-------------------------|------------------------|
-/// | 1     | Hardware Profiling      | 0                      |
-/// | 2     | Model Graph Analysis    | 0                      |
-/// | 3     | Runtime Preselection    | 0                      |
-/// | 4     | Bayesian Optimization   | N_INITIAL + N_ITER ≤ 12 |
+/// | Stage | Name                                           | Benchmarks             |
+/// |-------|------------------------------------------------|------------------------|
+/// | 1     | Hardware Profiling                             | 0                      |
+/// | 2     | Model Graph Analysis                           | 0                      |
+/// | 3     | Runtime Preselection                           | 0                      |
+/// | 4     | Bayesian Optimization (hardware-aware est.)    | 0 (pure estimation)    |
 ///
-/// Falls back to `run_optimization_cartesian` when all 12 evaluations fail.
+/// Falls back to `run_optimization_cartesian` only when the latency constraint
+/// is violated; estimation itself never fails.
 /// Returns `Err` only when the fallback also produces no valid configuration.
 pub async fn run_optimization(
     model: ModelInfo,
@@ -364,7 +368,7 @@ pub async fn run_optimization(
     };
 
     eprintln!(
-        "[Stage 4/4] Bayesian optimization: {N_INITIAL} initial samples + {N_ITER} refinement iterations"
+        "[Stage 4/4] Bayesian optimization (hardware-aware estimation): {N_INITIAL} initial samples + {N_ITER} refinement iterations"
     );
 
     // ── Stage 4a: Initial Halton samples ──────────────────────────────────────
@@ -376,17 +380,16 @@ pub async fn run_optimization(
 
     let mut all_failure_reasons: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
-    // Track distinct binary names that were missing so we can produce an
-    // actionable "install X" error if all evaluations fail.
-    let mut all_missing_binaries: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
 
-    let mut init_results = benchmark::run_benchmarks(initial_configs, &model, &hw).await;
-    for binary in collect_missing_binaries(&init_results) {
-        all_missing_binaries.insert(binary);
-    }
-    init_results = apply_llamacpp_fallback(init_results, &model, &hw);
-    init_results = drop_not_installed(init_results);
+    // Use hardware-aware estimation instead of live benchmarks. Estimation
+    // always succeeds, so no fallback or not-installed filtering is needed.
+    let init_results: Vec<(RuntimeConfig, Result<BenchmarkResult>)> = initial_configs
+        .into_iter()
+        .map(|cfg| {
+            let est = estimate::estimate_llamacpp(&cfg, &model, &hw);
+            (cfg, Ok(est))
+        })
+        .collect();
 
     // Record failures and seed the TPE model from successful observations.
     let mut tpe = TpeModel::new(0.25);
@@ -450,12 +453,10 @@ pub async fn run_optimization(
             cfg.gpu_layers,
         );
 
-        let mut iter_results = benchmark::run_benchmarks(vec![cfg.clone()], &model, &hw).await;
-        for binary in collect_missing_binaries(&iter_results) {
-            all_missing_binaries.insert(binary);
-        }
-        iter_results = apply_llamacpp_fallback(iter_results, &model, &hw);
-        iter_results = drop_not_installed(iter_results);
+        // Use hardware-aware estimation — no live inference, no binary required.
+        let est = estimate::estimate_llamacpp(&cfg, &model, &hw);
+        let iter_results: Vec<(RuntimeConfig, Result<BenchmarkResult>)> =
+            vec![(cfg.clone(), Ok(est))];
 
         for (result_cfg, outcome) in iter_results {
             match outcome {
@@ -535,9 +536,11 @@ pub async fn run_optimization(
         }
     }
 
-    // ── Fallback: all 12 evaluations failed — try cartesian ───────────────────
+    // ── Fallback: latency constraint violated — try cartesian ─────────────────
+    // With pure estimation this path is only reached when the best estimated
+    // config violates the user's --latency constraint. Estimation itself never
+    // produces failures, so all_failure_reasons will always be empty here.
     let reasons: Vec<String> = all_failure_reasons.into_iter().collect();
-    let missing: Vec<String> = all_missing_binaries.into_iter().collect();
     eprintln!(
         "[Bayes final] No successful evaluations — falling back to cartesian search. \
          Failure reasons: {}",
@@ -561,7 +564,7 @@ pub async fn run_optimization(
             }
             Ok(r)
         }
-        Err(cartesian_err) => Err(no_config_error(&reasons, &missing, max_latency_ms)
+        Err(cartesian_err) => Err(no_config_error(&reasons, &[], max_latency_ms)
             .context(format!("cartesian fallback also failed: {cartesian_err}"))),
     }
 }
