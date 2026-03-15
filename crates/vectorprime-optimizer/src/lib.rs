@@ -79,7 +79,7 @@ fn all_llamacpp_not_installed(
         && llamacpp_results.iter().all(|(_, r)| {
             r.as_ref()
                 .err()
-                .map(|e| is_not_installed(e))
+                .map(is_not_installed)
                 .unwrap_or(false)
         })
 }

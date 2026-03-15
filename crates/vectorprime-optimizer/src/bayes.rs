@@ -105,7 +105,7 @@ impl SearchSpace {
     /// for small sample counts, which leads to better initial coverage.
     pub fn halton_samples(&self, n: usize) -> Vec<ConfigPoint> {
         // Start at index 1 (index 0 maps to all-zeros, a degenerate point).
-        (1..=n).map(|i| halton_point(i)).collect()
+        (1..=n).map(halton_point).collect()
     }
 }
 
@@ -473,7 +473,7 @@ impl GpModel {
 /// system is singular or has zero rows.
 ///
 /// `a` is modified in-place as part of elimination.
-fn solve_linear(a: &mut Vec<Vec<f64>>, b: &[f64]) -> Vec<f64> {
+fn solve_linear(a: &mut [Vec<f64>], b: &[f64]) -> Vec<f64> {
     let n = b.len();
     if n == 0 || a.is_empty() {
         return vec![];
@@ -510,18 +510,19 @@ fn solve_linear(a: &mut Vec<Vec<f64>>, b: &[f64]) -> Vec<f64> {
         aug.swap(col, pivot);
 
         let scale = aug[col][col];
-        for j in col..=n {
-            aug[col][j] /= scale;
+        for val in aug[col].iter_mut().skip(col) {
+            *val /= scale;
         }
 
-        for row in 0..n {
+        // Collect pivot row once to avoid borrow checker issues with nested indexing
+        let pivot_row: Vec<f64> = aug[col][col..=n].to_vec();
+        for (row, row_data) in aug.iter_mut().enumerate() {
             if row == col {
                 continue;
             }
-            let factor = aug[row][col];
-            for j in col..=n {
-                let v = aug[col][j] * factor;
-                aug[row][j] -= v;
+            let factor = row_data[col];
+            for (i, val) in pivot_row.iter().enumerate() {
+                row_data[col + i] -= val * factor;
             }
         }
     }

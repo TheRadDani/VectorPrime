@@ -120,8 +120,8 @@ async fn run_phase1(
     // benchmark::run_benchmarks, since AdapterRegistry is not Send).
     let handles: Vec<_> = runtimes
         .iter()
-        .cloned()
         .map(|runtime| {
+            let runtime = runtime.clone();
             let model = Arc::clone(&model);
             let cfg = Arc::clone(&cfg);
             tokio::task::spawn_blocking(move || {
