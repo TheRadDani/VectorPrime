@@ -66,8 +66,12 @@ pub fn export_ollama(
 /// (e.g. `Q4_K_M` → `"q4_k_m"`, `F16` → `"f16"`), then shells out to:
 ///
 /// ```text
-/// llama-quantize <input> <output> <type>
+/// llama-quantize --allow-requantize <input> <output> <type>
 /// ```
+///
+/// The `--allow-requantize` flag is required when the source model is already
+/// quantized (e.g. `Q2_K`, `Q4_K_M`). It is supported since llama.cpp build
+/// b2606; older builds will exit non-zero with a different error message.
 ///
 /// Returns an error if `llama-quantize` is not in PATH or exits non-zero.
 pub fn quantize_gguf(input: &Path, output: &Path, quant: &QuantizationStrategy) -> Result<()> {
@@ -79,6 +83,7 @@ pub fn quantize_gguf(input: &Path, output: &Path, quant: &QuantizationStrategy) 
     let quant_type = quant_to_llama_quantize_type(quant);
 
     let status = Command::new("llama-quantize")
+        .arg("--allow-requantize")
         .arg(input)
         .arg(output)
         .arg(quant_type)
@@ -87,7 +92,8 @@ pub fn quantize_gguf(input: &Path, output: &Path, quant: &QuantizationStrategy) 
 
     if !status.success() {
         return Err(anyhow::anyhow!(
-            "llama-quantize exited with code {:?}",
+            "llama-quantize exited with code {:?} \
+             (if the source model is already quantized, ensure llama.cpp >= b2606 is installed)",
             status.code()
         ));
     }
