@@ -27,23 +27,19 @@ def _print_logo() -> None:
 
 def _print_fancy_header() -> None:
     """Print fancy VectorPrime header with styling."""
-    # ANSI color codes
-    BOLD = "\033[1m"
-    CYAN = "\033[36m"
-    MAGENTA = "\033[35m"
-    YELLOW = "\033[33m"
-    RESET = "\033[0m"
-    
     # Print logo first
     _print_logo()
     print()
     
     # Print fancy VectorPrime text with colors
-    header = f"{BOLD}{CYAN}╔════════════════════════════════════════╗{RESET}"
-    print(header)
-    print(f"{BOLD}{CYAN}║{RESET} {MAGENTA}⚡ VectorPrime - LLM Optimizer ⚡{RESET} {BOLD}{CYAN}║{RESET}")
-    print(f"{BOLD}{CYAN}║{RESET} {YELLOW}Hardware-Aware Inference Engine{RESET}       {BOLD}{CYAN}║{RESET}")
-    print(f"{BOLD}{CYAN}╚════════════════════════════════════════╝{RESET}")
+    print("""
+██    ██ ███████  ██████ ████████  ██████  ██████  ██████  ██████  ██ ███    ███ ███████ 
+██    ██ ██      ██         ██    ██    ██ ██   ██ ██   ██ ██   ██ ██ ████  ████ ██      
+██    ██ █████   ██         ██    ██    ██ ██████  ██████  ██████  ██ ██ ████ ██ █████   
+ ██  ██  ██      ██         ██    ██    ██ ██   ██ ██      ██   ██ ██ ██  ██  ██ ██      
+  ████   ███████  ██████    ██     ██████  ██   ██ ██      ██   ██ ██ ██      ██ ███████                                
+                                                                                                                                                     
+    """)
     print()
     sys.stdout.flush()  # Force output to display immediately
 
