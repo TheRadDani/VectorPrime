@@ -76,12 +76,9 @@ fn all_llamacpp_not_installed(
         .filter(|(cfg, _)| cfg.runtime == RuntimeKind::LlamaCpp)
         .collect();
     !llamacpp_results.is_empty()
-        && llamacpp_results.iter().all(|(_, r)| {
-            r.as_ref()
-                .err()
-                .map(|e| is_not_installed(e))
-                .unwrap_or(false)
-        })
+        && llamacpp_results
+            .iter()
+            .all(|(_, r)| r.as_ref().err().map(is_not_installed).unwrap_or(false))
 }
 
 /// Remove entries where the error is [`RuntimeError::NotInstalled`] for any
