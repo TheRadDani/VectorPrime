@@ -165,6 +165,6 @@ RUN --mount=type=secret,id=pypi_token \
     set -euxo pipefail \
     && twine check /dist/*manylinux*.whl \
     && TWINE_USERNAME=__token__ \
-       TWINE_PASSWORD="$(cat /run/secrets/pypi_token)" \
+       TWINE_PASSWORD=$(cat /run/secrets/pypi_token) \
        TWINE_REPOSITORY_URL="${TWINE_REPOSITORY_URL}" \
        twine upload --non-interactive /dist/*manylinux*.whl --verbose
